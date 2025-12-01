@@ -1,18 +1,18 @@
 import React, { useState, useEffect, useRef, Component } from "react";
-// --- 1. 核心修复：确保所有用到的图标都被正确引入 ---
+// --- 1. 图标库安全引用 ---
 import {
   Camera,
   Instagram,
   Mail,
   X,
-  Menu, // 拖拽手柄 & 移动端菜单
+  Menu, // 拖拽手柄
   ChevronRight,
   ChevronLeft,
   ChevronDown,
   User,
   Settings,
   Plus,
-  Trash, 
+  Trash,
   Save,
   LogOut,
   Image as ImageIcon,
@@ -23,13 +23,13 @@ import {
   UploadCloud,
   Play,
   Pause,
-  Edit, 
-  Globe, 
-  Music, 
+  Edit,
+  Globe,
+  Music,
   ArrowLeft,
   Eye,
   EyeOff,
-  Folder, 
+  Folder,
   Calendar,
   Layout,
   Type,
@@ -39,15 +39,16 @@ import {
   Youtube,
   ArrowUp,
   ArrowDown,
-  Aperture // 之前缺失的图标，导致白屏的元凶
+  Maximize,
+  Aperture, // 确保引入
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
-import { 
-  getAuth, 
+import {
+  getAuth,
   signInWithCustomToken,
-  signInAnonymously, 
+  signInAnonymously,
   onAuthStateChanged,
-  signOut
+  signOut,
 } from "firebase/auth";
 import {
   getFirestore,
@@ -65,7 +66,7 @@ import {
 } from "firebase/firestore";
 import { getStorage, ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
-// --- 0. 系统初始化 (防崩溃) ---
+// --- 0. 系统初始化 ---
 
 const MANUAL_CONFIG = {
   apiKey: "AIzaSyCE-gHGrVGjGLDdBgOj_KSlH5rZqBtQrXM",
@@ -78,37 +79,36 @@ const MANUAL_CONFIG = {
 };
 
 let app, auth, db, storage;
-let isFirebaseInitialized = false;
 
 try {
   let firebaseConfig = MANUAL_CONFIG;
-  if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+  if (typeof __firebase_config !== "undefined" && __firebase_config) {
     try {
-        firebaseConfig = JSON.parse(__firebase_config);
+      firebaseConfig = JSON.parse(__firebase_config);
     } catch (e) {
-        console.warn("Config parse error, using manual.");
+      console.warn("Config parse error, using manual.");
     }
   }
-  
+
   app = initializeApp(firebaseConfig);
   auth = getAuth(app);
   db = getFirestore(app);
   storage = getStorage(app);
-  isFirebaseInitialized = true;
   console.log("Firebase initialized successfully");
 } catch (e) {
   console.error("Firebase Init Critical Error:", e);
 }
 
-const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+const appId = typeof __app_id !== "undefined" ? __app_id : "default-app-id";
 
+// 辅助函数：安全的数据库引用
 const getPublicCollection = (colName) => {
   if (!db) return null;
-  return collection(db, 'artifacts', appId, 'public', 'data', colName);
+  return collection(db, "artifacts", appId, "public", "data", colName);
 };
 const getPublicDoc = (colName, docId) => {
   if (!db) return null;
-  return doc(db, 'artifacts', appId, 'public', 'data', colName, docId);
+  return doc(db, "artifacts", appId, "public", "data", colName, docId);
 };
 
 const uploadFileToStorage = async (file, path) => {
@@ -119,15 +119,15 @@ const uploadFileToStorage = async (file, path) => {
 };
 
 const slugify = (text) => {
-  if (!text) return '';
+  if (!text) return "";
   return text
     .toString()
     .toLowerCase()
-    .replace(/\s+/g, '-')
-    .replace(/[^\w\-]+/g, '')
-    .replace(/\-\-+/g, '-')
-    .replace(/^-+/, '')
-    .replace(/-+$/, '');
+    .replace(/\s+/g, "-")
+    .replace(/[^\w\-]+/g, "")
+    .replace(/\-\-+/g, "-")
+    .replace(/^-+/, "")
+    .replace(/-+$/, "");
 };
 
 const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
@@ -139,36 +139,45 @@ const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
       img.src = event.target.result;
       img.onload = () => {
         try {
-          const canvas = document.createElement('canvas');
+          const canvas = document.createElement("canvas");
           let width = img.width;
           let height = img.height;
 
           if (width > maxWidth || height > maxWidth) {
             if (width > height) {
-               height = Math.round(height * (maxWidth / width));
-               width = maxWidth;
+              height = Math.round(height * (maxWidth / width));
+              width = maxWidth;
             } else {
-               width = Math.round(width * (maxWidth / height));
-               height = maxWidth;
+              width = Math.round(width * (maxWidth / height));
+              height = maxWidth;
             }
           } else {
-             resolve(file);
-             return;
+            resolve(file);
+            return;
           }
 
           canvas.width = width;
           canvas.height = height;
-          
-          const ctx = canvas.getContext('2d');
+
+          const ctx = canvas.getContext("2d");
           ctx.drawImage(img, 0, 0, width, height);
-          
-          canvas.toBlob((blob) => {
-            if (blob) {
-              resolve(new File([blob], file.name, { type: 'image/jpeg', lastModified: Date.now() }));
-            } else {
-              resolve(file);
-            }
-          }, 'image/jpeg', quality);
+
+          canvas.toBlob(
+            (blob) => {
+              if (blob) {
+                resolve(
+                  new File([blob], file.name, {
+                    type: "image/jpeg",
+                    lastModified: Date.now(),
+                  })
+                );
+              } else {
+                resolve(file);
+              }
+            },
+            "image/jpeg",
+            quality
+          );
         } catch (e) {
           resolve(file);
         }
@@ -181,12 +190,11 @@ const compressImage = async (file, maxWidth = 400, quality = 0.6) => {
 
 // --- 1. 样式注入 ---
 const injectStyles = () => {
-  if (typeof document === 'undefined') return;
-  const existing = document.getElementById('t8days-styles');
-  if (existing) return;
+  if (typeof document === "undefined") return;
+  if (document.getElementById("t8days-styles")) return;
 
   const styleSheet = document.createElement("style");
-  styleSheet.id = 't8days-styles';
+  styleSheet.id = "t8days-styles";
   styleSheet.innerText = `
     @import url('https://fonts.googleapis.com/css2?family=Cinzel:wght@400;700&family=Inter:wght@300;400;600&display=swap');
     :root { --font-heading: 'Cinzel', serif; --font-body: 'Inter', sans-serif; }
@@ -202,6 +210,8 @@ const injectStyles = () => {
 };
 injectStyles();
 
+// --- 全局常量定义 (移至顶层以修复白屏) ---
+
 const APP_CONFIG = { adminPasscode: "8888" };
 
 const UI_TEXT = {
@@ -211,28 +221,50 @@ const UI_TEXT = {
 };
 
 const DEFAULT_SLIDES = [
-  { type: "image", title: "Serenity", url: "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=2000", link: "" }
+  {
+    type: "image",
+    title: "Serenity",
+    url: "https://images.unsplash.com/photo-1492691527719-9d1e07e534b4?q=80&w=2000",
+    link: "",
+  },
 ];
 
 const DEFAULT_PROFILE = {
   brandName: "T8DAYS",
   logoUrl: "",
-  faviconUrl: "", 
-  siteTitle: "T8DAYS Photography", 
-  siteDescription: "A photography portfolio.", 
+  faviconUrl: "",
+  siteTitle: "T8DAYS Photography",
+  siteDescription: "A photography portfolio.",
   email: "contact@t8days.com",
   location: "Bangkok",
-  heroImage: "https://images.unsplash.com/photo-1552058544-f2b08422138a?auto=format&fit=crop&w=800&q=80",
+  heroImage:
+    "https://images.unsplash.com/photo-1552058544-f2b08422138a?auto=format&fit=crop&w=800&q=80",
   social: { instagram: "", tiktok: "", rednote: "" },
   heroSlides: DEFAULT_SLIDES,
   content: {
-    cn: { title: "以光为墨，记录世界。", bio: "这里不只是照片，而是时间的切片。", aboutText: "你好，我是 T8DAY..." },
-    en: { title: "Painting with light.", bio: "Slices of time.", aboutText: "Hi, I am T8DAY..." },
-    th: { title: "วาดด้วยแสง", bio: "ชิ้นส่วนของเวลา", aboutText: "สวัสดี ฉันคือ T8DAY..." },
+    cn: {
+      title: "以光为墨，记录世界。",
+      bio: "这里不只是照片，而是时间的切片。",
+      aboutText: "你好，我是 T8DAY...",
+    },
+    en: {
+      title: "Painting with light.",
+      bio: "Slices of time.",
+      aboutText: "Hi, I am T8DAY...",
+    },
+    th: {
+      title: "วาดด้วยแสง",
+      bio: "ชิ้นส่วนของเวลา",
+      aboutText: "สวัสดี ฉันคือ T8DAY...",
+    },
   },
 };
 
-const DEFAULT_SETTINGS = { themeColor: "stone", categories: [], profile: DEFAULT_PROFILE };
+const DEFAULT_SETTINGS = {
+  themeColor: "stone",
+  categories: [],
+  profile: DEFAULT_PROFILE,
+};
 
 // --- 2. 基础组件 ---
 
@@ -244,49 +276,120 @@ const MetaUpdater = ({ profile }) => {
 };
 
 const LoginModal = ({ isOpen, onClose, onLogin }) => {
-  const [passcode, setPasscode] = useState('');
+  const [passcode, setPasscode] = useState("");
   if (!isOpen) return null;
   return (
     <div className="fixed inset-0 z-[200] bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-neutral-900 border border-neutral-800 rounded-xl p-8 max-w-sm w-full text-center shadow-2xl animate-fade-in-up">
         <Lock className="w-8 h-8 text-neutral-500 mx-auto mb-4" />
-        <h3 className="text-white text-lg font-light tracking-widest uppercase mb-6">Admin Access</h3>
-        <input 
-          type="password" value={passcode} onChange={(e) => setPasscode(e.target.value)} placeholder="Passcode"
+        <h3 className="text-white text-lg font-light tracking-widest uppercase mb-6">
+          Admin Access
+        </h3>
+        <input
+          type="password"
+          value={passcode}
+          onChange={(e) => setPasscode(e.target.value)}
+          placeholder="Passcode"
           className="w-full bg-black border border-neutral-700 rounded px-4 py-3 text-white text-center tracking-[0.5em] mb-6 focus:outline-none focus:border-white transition-colors"
           autoFocus
         />
         <div className="flex gap-4">
-          <button onClick={onClose} className="flex-1 py-3 text-neutral-500 hover:text-white text-sm uppercase">Cancel</button>
-          <button onClick={() => onLogin(passcode)} className="flex-1 py-3 bg-white text-black font-bold rounded text-sm uppercase hover:bg-neutral-200">Enter</button>
+          <button
+            onClick={onClose}
+            className="flex-1 py-3 text-neutral-500 hover:text-white text-sm uppercase"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={() => onLogin(passcode)}
+            className="flex-1 py-3 bg-white text-black font-bold rounded text-sm uppercase hover:bg-neutral-200"
+          >
+            Enter
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-const GlobalNav = ({ profile, ui, onNavClick, lang, setLang, mobileMenuOpen, setMobileMenuOpen }) => {
+const GlobalNav = ({
+  profile,
+  ui,
+  onNavClick,
+  lang,
+  setLang,
+  mobileMenuOpen,
+  setMobileMenuOpen,
+}) => {
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
+  const uiText = ui || UI_TEXT.en; // Safe fallback
+
   return (
     <>
       <nav className="fixed top-0 left-0 right-0 z-50 py-6 md:py-8 px-6 md:px-12 flex justify-between items-center transition-all duration-500 bg-gradient-to-b from-neutral-950/80 to-transparent backdrop-blur-[2px]">
-        <div className="cursor-pointer flex items-center gap-2 hover:opacity-80 transition-opacity" onClick={() => onNavClick("home")}>
-          {profile.logoUrl ? <img src={profile.logoUrl} alt="Logo" className="h-8 md:h-10 w-auto object-contain" /> : <><Aperture className="w-4 h-4 text-white/40" /><span className="text-white/40 font-medium tracking-widest text-sm font-serif">{profile.brandName}</span></>}
+        <div
+          className="cursor-pointer flex items-center gap-2 hover:opacity-80 transition-opacity"
+          onClick={() => onNavClick("home")}
+        >
+          {profile.logoUrl ? (
+            <img
+              src={profile.logoUrl}
+              alt="Logo"
+              className="h-8 md:h-10 w-auto object-contain"
+            />
+          ) : (
+            <>
+              <Aperture className="w-4 h-4 text-white/40" />
+              <span className="text-white/40 font-medium tracking-widest text-sm font-serif">
+                {profile.brandName}
+              </span>
+            </>
+          )}
         </div>
-        
+
         <div className="hidden md:flex items-center gap-12">
           <div className="flex gap-8 text-xs font-bold tracking-[0.15em] uppercase text-neutral-400 font-sans">
-            <button onClick={() => onNavClick("works")} className="hover:text-white transition-colors pb-1">{ui.works}</button>
-            <button onClick={() => onNavClick("about")} className="hover:text-white transition-colors pb-1">{ui.about}</button>
-          </div>
-          <div className="relative group" onMouseEnter={() => setLangDropdownOpen(true)} onMouseLeave={() => setLangDropdownOpen(false)}>
-            <button className="flex items-center gap-1 text-[10px] font-bold text-neutral-400 hover:text-white uppercase tracking-widest transition-colors">
-              <Globe className="w-3 h-3 mr-1" /> {ui.language} <ChevronDown className="w-3 h-3" />
+            <button
+              onClick={() => onNavClick("works")}
+              className="hover:text-white transition-colors pb-1"
+            >
+              {uiText.works}
             </button>
-            <div className={`absolute top-full right-0 pt-4 transition-opacity duration-300 ${langDropdownOpen ? "opacity-100 visible" : "opacity-0 invisible"}`}>
+            <button
+              onClick={() => onNavClick("about")}
+              className="hover:text-white transition-colors pb-1"
+            >
+              {uiText.about}
+            </button>
+          </div>
+          <div
+            className="relative group"
+            onMouseEnter={() => setLangDropdownOpen(true)}
+            onMouseLeave={() => setLangDropdownOpen(false)}
+          >
+            <button className="flex items-center gap-1 text-[10px] font-bold text-neutral-400 hover:text-white uppercase tracking-widest transition-colors">
+              <Globe className="w-3 h-3 mr-1" /> {uiText.language}{" "}
+              <ChevronDown className="w-3 h-3" />
+            </button>
+            <div
+              className={`absolute top-full right-0 pt-4 transition-opacity duration-300 ${
+                langDropdownOpen ? "opacity-100 visible" : "opacity-0 invisible"
+              }`}
+            >
               <div className="bg-neutral-900 border border-neutral-800 p-2 rounded flex flex-col gap-2 min-w-[80px] shadow-xl">
                 {["en", "cn", "th"].map((l) => (
-                  <button key={l} onClick={() => { setLang(l); setLangDropdownOpen(false); }} className={`text-[10px] font-bold uppercase text-left px-2 py-1 rounded ${lang === l ? "text-white" : "text-neutral-500 hover:bg-neutral-800"}`}>
+                  <button
+                    key={l}
+                    onClick={() => {
+                      setLang(l);
+                      setLangDropdownOpen(false);
+                    }}
+                    className={`text-[10px] font-bold uppercase text-left px-2 py-1 rounded ${
+                      lang === l
+                        ? "text-white"
+                        : "text-neutral-500 hover:bg-neutral-800"
+                    }`}
+                  >
                     {l === "cn" ? "中文" : l === "en" ? "English" : "ไทย"}
                   </button>
                 ))}
@@ -296,16 +399,38 @@ const GlobalNav = ({ profile, ui, onNavClick, lang, setLang, mobileMenuOpen, set
         </div>
 
         <div className="md:hidden flex items-center gap-4">
-          <button onClick={() => setLang(lang === "en" ? "cn" : lang === "cn" ? "th" : "en")} className="text-[10px] font-bold uppercase text-neutral-400 border border-neutral-800 px-2 py-1 rounded">{lang}</button>
-          <button className="text-white" onClick={() => setMobileMenuOpen(!mobileMenuOpen)}>{mobileMenuOpen ? <X /> : <Menu />}</button>
+          <button
+            onClick={() =>
+              setLang(lang === "en" ? "cn" : lang === "cn" ? "th" : "en")
+            }
+            className="text-[10px] font-bold uppercase text-neutral-400 border border-neutral-800 px-2 py-1 rounded"
+          >
+            {lang}
+          </button>
+          <button
+            className="text-white"
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+          >
+            {mobileMenuOpen ? <X /> : <Menu />}
+          </button>
         </div>
       </nav>
 
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 bg-black/95 backdrop-blur-xl flex flex-col items-center justify-center animate-fade-in-up">
           <div className="flex flex-col gap-12 text-4xl font-thin text-white tracking-widest items-center font-serif">
-            <button onClick={() => onNavClick("works")} className="hover:text-neutral-400 transition-colors">{ui.works}</button>
-            <button onClick={() => onNavClick("about")} className="hover:text-neutral-400 transition-colors">{ui.about}</button>
+            <button
+              onClick={() => onNavClick("works")}
+              className="hover:text-neutral-400 transition-colors"
+            >
+              {uiText.works}
+            </button>
+            <button
+              onClick={() => onNavClick("about")}
+              className="hover:text-neutral-400 transition-colors"
+            >
+              {uiText.about}
+            </button>
           </div>
         </div>
       )}
@@ -317,7 +442,7 @@ const GlobalNav = ({ profile, ui, onNavClick, lang, setLang, mobileMenuOpen, set
 
 const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
   const [currentIndex, setCurrentIndex] = useState(0);
-  
+
   useEffect(() => {
     if (slides.length > 1) {
       const nextIndex = (currentIndex + 1) % slides.length;
@@ -334,7 +459,9 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
     return () => clearInterval(interval);
   }, [slides]);
 
-  useEffect(() => { onIndexChange && onIndexChange(currentIndex); }, [currentIndex, onIndexChange]);
+  useEffect(() => {
+    onIndexChange && onIndexChange(currentIndex);
+  }, [currentIndex, onIndexChange]);
 
   if (!slides || slides.length === 0) return null;
 
@@ -355,41 +482,59 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
       {slides.map((slide, index) => {
         const isActive = index === currentIndex;
         return (
-            <div 
-              key={index} 
-              onClick={() => isActive && handleSlideClick(slide)}
-              className={`absolute inset-0 w-full h-full transition-opacity duration-[2000ms] ease-in-out ${isActive ? "opacity-100 z-10 cursor-pointer" : "opacity-0 z-0 pointer-events-none"}`}
-            >
-              {slide.type === "video" ? (
-                <video src={slide.url} autoPlay muted loop playsInline className="w-full h-full object-cover" />
-              ) : (
-                <div className="relative w-full h-full">
-                  <img 
-                    src={slide.url} 
-                    alt={slide.title}
-                    className="w-full h-full object-cover"
-                    fetchPriority={index === 0 ? "high" : "auto"}
-                    loading={index === 0 ? "eager" : "lazy"}
-                    decoding="async"
-                  />
-                  <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70 pointer-events-none" />
-                </div>
-              )}
-            </div>
+          <div
+            key={index}
+            onClick={() => isActive && handleSlideClick(slide)}
+            className={`absolute inset-0 w-full h-full transition-opacity duration-[2000ms] ease-in-out ${
+              isActive
+                ? "opacity-100 z-10 cursor-pointer"
+                : "opacity-0 z-0 pointer-events-none"
+            }`}
+          >
+            {slide.type === "video" ? (
+              <video
+                src={slide.url}
+                autoPlay
+                muted
+                loop
+                playsInline
+                className="w-full h-full object-cover"
+              />
+            ) : (
+              <div className="relative w-full h-full">
+                <img
+                  src={slide.url}
+                  alt={slide.title}
+                  className="w-full h-full object-cover"
+                  fetchPriority={index === 0 ? "high" : "auto"}
+                  loading={index === 0 ? "eager" : "lazy"}
+                  decoding="async"
+                />
+                <div className="absolute inset-0 bg-gradient-to-b from-black/30 via-transparent to-black/70 pointer-events-none" />
+              </div>
+            )}
+          </div>
         );
       })}
 
       {/* 简约圆点指示器 */}
       {slides.length > 1 && (
         <div className="absolute bottom-8 left-1/2 -translate-x-1/2 z-20 flex items-center justify-center gap-3">
-           {slides.map((_, idx) => (
-             <button 
-               key={idx} 
-               onClick={(e) => { e.stopPropagation(); setCurrentIndex(idx); }}
-               className={`w-2 h-2 rounded-full cursor-pointer transition-all duration-300 ${idx === currentIndex ? "bg-white scale-125" : "bg-white/40 hover:bg-white/60"}`}
-               aria-label={`Go to slide ${idx + 1}`}
-             />
-           ))}
+          {slides.map((_, idx) => (
+            <button
+              key={idx}
+              onClick={(e) => {
+                e.stopPropagation();
+                setCurrentIndex(idx);
+              }}
+              className={`w-2 h-2 rounded-full cursor-pointer transition-all duration-300 ${
+                idx === currentIndex
+                  ? "bg-white scale-125"
+                  : "bg-white/40 hover:bg-white/60"
+              }`}
+              aria-label={`Go to slide ${idx + 1}`}
+            />
+          ))}
         </div>
       )}
     </div>
@@ -397,7 +542,10 @@ const HeroSlideshow = ({ slides, onIndexChange, onLinkClick }) => {
 };
 
 const AboutPage = ({ profile, lang, onClose }) => {
-  const content = { ...DEFAULT_PROFILE.content[lang], ...(profile.content?.[lang] || {}) };
+  const content = {
+    ...DEFAULT_PROFILE.content[lang],
+    ...(profile.content?.[lang] || {}),
+  };
   return (
     <div className="fixed inset-0 z-30 bg-neutral-950 overflow-y-auto animate-fade-in-up no-scrollbar">
       <div className="min-h-screen flex flex-col">
@@ -405,65 +553,116 @@ const AboutPage = ({ profile, lang, onClose }) => {
           <div className="flex flex-col md:flex-row gap-12 md:gap-16 items-start">
             <div className="w-full md:w-5/12 md:sticky md:top-32 relative">
               <div className="aspect-[3/4] md:aspect-[4/5] bg-neutral-900 overflow-hidden grayscale hover:grayscale-0 transition-all duration-1000 ease-out shadow-2xl">
-                <img src={profile.heroImage} alt="Profile" className="w-full h-full object-cover" />
+                <img
+                  src={profile.heroImage}
+                  alt="Profile"
+                  className="w-full h-full object-cover"
+                />
               </div>
             </div>
             <div className="w-full md:w-7/12 pt-4">
-              <h1 className="text-3xl md:text-5xl font-thin text-white mb-8 md:mb-12 leading-tight font-serif">{content.title}</h1>
+              <h1 className="text-3xl md:text-5xl font-thin text-white mb-8 md:mb-12 leading-tight font-serif">
+                {content.title}
+              </h1>
               <div className="prose prose-invert prose-lg max-w-none text-neutral-400 font-light leading-relaxed space-y-6 md:space-y-8 whitespace-pre-line text-sm md:text-base font-sans">
                 {content.aboutText}
               </div>
-              <div className="mt-16 md:mt-24 pt-12 border-t border-neutral-900 grid grid-cols-1 gap-8" id="contact-info">
+              <div
+                className="mt-16 md:mt-24 pt-12 border-t border-neutral-900 grid grid-cols-1 gap-8"
+                id="contact-info"
+              >
                 <div>
-                  <h3 className="text-xs font-bold text-neutral-600 uppercase tracking-widest mb-4">Contact</h3>
-                  <a href={`mailto:${profile.email}`} className="text-white text-xl font-light hover:text-neutral-400 transition-colors block mb-2 font-serif">{profile.email}</a>
-                  <p className="text-neutral-500 font-light">{profile.location}</p>
+                  <h3 className="text-xs font-bold text-neutral-600 uppercase tracking-widest mb-4">
+                    Contact
+                  </h3>
+                  <a
+                    href={`mailto:${profile.email}`}
+                    className="text-white text-xl font-light hover:text-neutral-400 transition-colors block mb-2 font-serif"
+                  >
+                    {profile.email}
+                  </a>
+                  <p className="text-neutral-500 font-light">
+                    {profile.location}
+                  </p>
                 </div>
                 <div className="flex gap-6">
-                  {profile.social?.instagram && <a href={profile.social.instagram} target="_blank" className="text-neutral-500 hover:text-white transition-colors text-xs tracking-widest uppercase flex items-center gap-1"><Instagram size={14} /> IG</a>}
-                  {profile.social?.tiktok && <a href={profile.social.tiktok} target="_blank" className="text-neutral-500 hover:text-white transition-colors text-xs tracking-widest uppercase flex items-center gap-1"><Music size={14} /> TK</a>}
-                  {profile.social?.rednote && <a href={profile.social.rednote} target="_blank" className="text-neutral-500 hover:text-white transition-colors text-xs tracking-widest uppercase flex items-center gap-1"><ExternalLink size={14} /> RED</a>}
+                  {profile.social?.instagram && (
+                    <a
+                      href={profile.social.instagram}
+                      target="_blank"
+                      className="text-neutral-500 hover:text-white transition-colors text-xs tracking-widest uppercase flex items-center gap-1"
+                    >
+                      <Instagram size={14} /> IG
+                    </a>
+                  )}
+                  {profile.social?.tiktok && (
+                    <a
+                      href={profile.social.tiktok}
+                      target="_blank"
+                      className="text-neutral-500 hover:text-white transition-colors text-xs tracking-widest uppercase flex items-center gap-1"
+                    >
+                      <Music size={14} /> TK
+                    </a>
+                  )}
+                  {profile.social?.rednote && (
+                    <a
+                      href={profile.social.rednote}
+                      target="_blank"
+                      className="text-neutral-500 hover:text-white transition-colors text-xs tracking-widest uppercase flex items-center gap-1"
+                    >
+                      <ExternalLink size={14} /> RED
+                    </a>
+                  )}
                 </div>
               </div>
             </div>
           </div>
         </div>
-        <button onClick={onClose} className="fixed top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"><X className="w-6 h-6" /></button>
+        <button
+          onClick={onClose}
+          className="fixed top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
+        >
+          <X className="w-6 h-6" />
+        </button>
       </div>
     </div>
   );
 };
 
-// ImmersiveLightbox: 极速加载优化版 (无转圈，无标题，固定 50% 灰度导航箭头)
-const ImmersiveLightbox = ({ initialIndex, images, onClose, onIndexChange }) => {
+// ImmersiveLightbox: 修复版 (固定半透明箭头 + 无转圈)
+const ImmersiveLightbox = ({
+  initialIndex,
+  images,
+  onClose,
+  onIndexChange,
+}) => {
   const [currentIndex, setCurrentIndex] = useState(initialIndex);
   const [isHighResLoaded, setIsHighResLoaded] = useState(false);
   const highResRef = useRef(null);
   const currentImage = images[currentIndex];
 
-  // 强制检查缓存和重置状态
+  // 手势状态
+  const [touchStart, setTouchStart] = useState(null);
+  const [touchEnd, setTouchEnd] = useState(null);
+  const minSwipeDistance = 50;
+
   useEffect(() => {
     setIsHighResLoaded(false);
-    
     let forceShowTimer;
-    // 秒开检查
     if (highResRef.current && highResRef.current.complete) {
       setIsHighResLoaded(true);
     } else {
-        // 保险丝: 0.1秒后强制显示
-        forceShowTimer = setTimeout(() => {
-            setIsHighResLoaded(true);
-        }, 100); 
+      forceShowTimer = setTimeout(() => {
+        setIsHighResLoaded(true);
+      }, 100);
     }
-
     if (images.length > 1) {
       const nextIndex = (currentIndex + 1) % images.length;
       const img = new Image();
       img.src = images[nextIndex].url;
     }
-
     return () => {
-        if (forceShowTimer) clearTimeout(forceShowTimer);
+      if (forceShowTimer) clearTimeout(forceShowTimer);
     };
   }, [currentIndex, images]);
 
@@ -478,6 +677,23 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose, onIndexChange }) => 
     if (onIndexChange) onIndexChange(nextIndex);
   };
 
+  // Touch
+  const onTouchStart = (e) => {
+    setTouchEnd(null);
+    setTouchStart(e.targetTouches[0].clientX);
+  };
+  const onTouchMove = (e) => {
+    setTouchEnd(e.targetTouches[0].clientX);
+  };
+  const onTouchEnd = () => {
+    if (!touchStart || !touchEnd) return;
+    const distance = touchStart - touchEnd;
+    const isLeftSwipe = distance > minSwipeDistance;
+    const isRightSwipe = distance < -minSwipeDistance;
+    if (isLeftSwipe) changeImage("next");
+    if (isRightSwipe) changeImage("prev");
+  };
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === "ArrowRight") changeImage("next");
@@ -489,52 +705,76 @@ const ImmersiveLightbox = ({ initialIndex, images, onClose, onIndexChange }) => 
   }, [currentIndex]);
 
   if (!currentImage) return null;
-  
+
   const isHighRes = currentImage.width > 1920 && currentImage.height > 1080;
   const imgClassName = isHighRes ? "h-[75vh] w-auto" : "max-h-[75vh] w-auto";
   const placeholderSrc = currentImage.thumbnailUrl || currentImage.url;
 
   return (
-    <div className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in">
-      
-      <button onClick={onClose} className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"><X className="w-6 h-6" /></button>
-      
-      {/* Navigation Zones with Fixed 50% Opacity Arrows */}
-      <div className="absolute inset-y-0 left-0 w-24 z-20 flex items-center justify-center cursor-pointer group" onClick={() => changeImage("prev")}>
-         <ChevronLeft className="text-white/50 group-hover:text-white transition-colors" size={40} />
+    <div
+      className="fixed inset-0 z-[100] bg-black flex items-center justify-center animate-fade-in"
+      onTouchStart={onTouchStart}
+      onTouchMove={onTouchMove}
+      onTouchEnd={onTouchEnd}
+    >
+      <button
+        onClick={onClose}
+        className="absolute top-6 right-6 z-50 text-neutral-500 hover:text-white transition-colors p-4"
+      >
+        <X className="w-6 h-6" />
+      </button>
+
+      {/* Fixed Arrow Navigation with 50% Opacity (Visual Hint) */}
+      <div className="absolute inset-y-0 left-4 z-20 flex items-center justify-center pointer-events-none">
+        <ChevronLeft className="text-white/50" size={48} />
       </div>
-      <div className="absolute inset-y-0 right-0 w-24 z-20 flex items-center justify-center cursor-pointer group" onClick={() => changeImage("next")}>
-         <ChevronRight className="text-white/50 group-hover:text-white transition-colors" size={40} />
+
+      <div className="absolute inset-y-0 right-4 z-20 flex items-center justify-center pointer-events-none">
+        <ChevronRight className="text-white/50" size={48} />
       </div>
-      <div className="absolute inset-0 z-10" onClick={() => changeImage("next")} />
-      
-      <div className="relative z-10 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {/* 1. 占位图层 */}
-        <img 
-          src={placeholderSrc} 
-          className={`${imgClassName} object-contain absolute filter blur-xl scale-105 opacity-50 transition-opacity duration-500`}
-          style={{ opacity: 1 }} 
+
+      {/* Interactive Click Zones (Invisible but cover half screen) */}
+      <div
+        className="absolute inset-y-0 left-0 w-1/2 z-10 cursor-pointer"
+        onClick={() => changeImage("prev")}
+      />
+      <div
+        className="absolute inset-y-0 right-0 w-1/2 z-10 cursor-pointer"
+        onClick={() => changeImage("next")}
+      />
+
+      <div className="relative z-0 w-full h-full flex items-center justify-center p-4 pointer-events-none">
+        {/* 1. Thumbnail (Placeholder) */}
+        <img
+          src={placeholderSrc}
+          className={`${imgClassName} object-contain absolute filter blur-xl scale-105`}
+          style={{ opacity: 1 }}
           alt="placeholder"
         />
-        
-        {/* 2. 高清图层 */}
-        <img 
-            ref={highResRef}
-            src={currentImage.url} 
-            alt="Photo" 
-            className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-700 ease-out`}
-            style={{ opacity: isHighResLoaded ? 1 : 0 }}
-            onLoad={() => setIsHighResLoaded(true)}
-            onError={() => setIsHighResLoaded(true)} 
+
+        {/* 2. High Res (Fades In) */}
+        <img
+          ref={highResRef}
+          src={currentImage.url}
+          alt="Photo"
+          className={`${imgClassName} object-contain shadow-2xl relative z-10 transition-opacity duration-700 ease-out`}
+          style={{ opacity: isHighResLoaded ? 1 : 0 }}
+          onLoad={() => setIsHighResLoaded(true)}
+          onError={() => setIsHighResLoaded(true)}
         />
       </div>
-      
+
       <div className="absolute bottom-8 left-8 z-30 pointer-events-none">
         <div className="bg-black/0 backdrop-blur-none p-4 rounded-sm">
-          <div className="text-white/40 font-serif font-thin text-xs tracking-widest mb-1">{currentImage.year} — {currentImage.project}</div>
+          <div className="text-white/40 font-serif font-thin text-xs tracking-widest mb-1">
+            {currentImage.year} — {currentImage.project}
+          </div>
         </div>
       </div>
-      <div className="absolute bottom-8 right-8 z-30 text-white/30 font-mono text-xs tracking-widest pointer-events-none">{currentIndex + 1} / {images.length}</div>
+      {/* Page number */}
+      <div className="absolute bottom-8 right-8 z-30 text-white/30 font-mono text-xs tracking-widest pointer-events-none">
+        {currentIndex + 1} / {images.length}
+      </div>
     </div>
   );
 };
@@ -549,58 +789,97 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
     if (!scrollContainerRef.current) return;
     const { left, width } = scrollContainerRef.current.getBoundingClientRect();
     const x = e.clientX - left;
-    const stopScroll = () => { if (animationRef.current) { cancelAnimationFrame(animationRef.current); animationRef.current = null; } };
+    const stopScroll = () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+        animationRef.current = null;
+      }
+    };
     if (x > width * 0.8) {
       stopScroll();
-      const scrollRight = () => { if (scrollContainerRef.current) { scrollContainerRef.current.scrollLeft += 5; animationRef.current = requestAnimationFrame(scrollRight); } };
+      const scrollRight = () => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollLeft += 5;
+          animationRef.current = requestAnimationFrame(scrollRight);
+        }
+      };
       scrollRight();
     } else if (x < width * 0.2) {
       stopScroll();
-      const scrollLeft = () => { if (scrollContainerRef.current) { scrollContainerRef.current.scrollLeft -= 5; animationRef.current = requestAnimationFrame(scrollLeft); } };
+      const scrollLeft = () => {
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollLeft -= 5;
+          animationRef.current = requestAnimationFrame(scrollLeft);
+        }
+      };
       scrollLeft();
-    } else { stopScroll(); }
+    } else {
+      stopScroll();
+    }
   };
 
   const handleMouseEnter = () => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
-    if (window.innerWidth >= 768) { 
-      hoverTimeoutRef.current = setTimeout(() => setShowOverlay(true), 600); 
-    } 
+    if (window.innerWidth >= 768) {
+      hoverTimeoutRef.current = setTimeout(() => setShowOverlay(true), 600);
+    }
   };
 
-  const handleMouseLeave = () => { 
+  const handleMouseLeave = () => {
     if (hoverTimeoutRef.current) clearTimeout(hoverTimeoutRef.current);
     setShowOverlay(false);
-    if (animationRef.current) cancelAnimationFrame(animationRef.current); 
+    if (animationRef.current) cancelAnimationFrame(animationRef.current);
   };
 
   const isProjectTitleVisible = showOverlay && window.innerWidth >= 768;
 
   return (
-    <div className="relative group/row mb-8 md:mb-12 transition-all duration-1000" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave} onMouseMove={handleMouseMove}>
-      
+    <div
+      className="relative group/row mb-8 md:mb-12 transition-all duration-1000"
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+      onMouseMove={handleMouseMove}
+    >
       <div className="md:hidden mb-2 px-1 flex items-center gap-2">
-        <h3 className="text-lg font-serif text-white/90 tracking-widest uppercase">{projectTitle}</h3>
+        <h3 className="text-lg font-serif text-white/90 tracking-widest uppercase">
+          {projectTitle}
+        </h3>
         <div className="h-[1px] flex-grow bg-white/10"></div>
       </div>
 
-      <div className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-500 ease-out ${isProjectTitleVisible ? "opacity-100" : "opacity-0"}`}>
-        <h3 className="text-2xl md:text-3xl font-thin text-white/80 tracking-widest uppercase drop-shadow-2xl mix-blend-difference font-serif">{projectTitle}</h3>
+      <div
+        className={`hidden md:flex absolute inset-0 z-10 items-center justify-start pl-4 pointer-events-none transition-opacity duration-500 ease-out ${
+          isProjectTitleVisible ? "opacity-100" : "opacity-0"
+        }`}
+      >
+        <h3 className="text-2xl md:text-3xl font-thin text-white/80 tracking-widest uppercase drop-shadow-2xl mix-blend-difference font-serif">
+          {projectTitle}
+        </h3>
       </div>
 
       <div className="md:hidden absolute right-0 top-0 bottom-8 w-12 bg-gradient-to-l from-black/50 to-transparent z-10 pointer-events-none flex items-center justify-center">
-         <ChevronRight className="text-white/50 animate-pulse" size={20} />
+        <ChevronRight className="text-white/50 animate-pulse" size={20} />
       </div>
 
-      <div ref={scrollContainerRef} className={`flex overflow-x-auto no-scrollbar gap-1 md:gap-1 transition-opacity duration-500 ease-out ${isProjectTitleVisible ? "opacity-30" : "opacity-100"}`} style={{ scrollBehavior: "auto", WebkitOverflowScrolling: 'touch' }}>
+      <div
+        ref={scrollContainerRef}
+        className={`flex overflow-x-auto no-scrollbar gap-1 md:gap-1 transition-opacity duration-500 ease-out ${
+          isProjectTitleVisible ? "opacity-30" : "opacity-100"
+        }`}
+        style={{ scrollBehavior: "auto", WebkitOverflowScrolling: "touch" }}
+      >
         {photos.map((photo) => (
-          <div key={photo.id} className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[32vw] md:w-[9vw]" onClick={() => onImageClick(photo, photos)}>
-            <img 
-              src={photo.thumbnailUrl || photo.url} 
-              alt="Work" 
-              loading="lazy" 
-              decoding="async" 
-              className="w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-110" 
+          <div
+            key={photo.id}
+            className="flex-shrink-0 aspect-square bg-neutral-900 overflow-hidden cursor-pointer w-[32vw] md:w-[9vw]"
+            onClick={() => onImageClick(photo, photos)}
+          >
+            <img
+              src={photo.thumbnailUrl || photo.url}
+              alt="Work"
+              loading="lazy"
+              decoding="async"
+              className="w-full h-full object-cover transition-transform duration-700 ease-out hover:scale-110"
             />
           </div>
         ))}
@@ -613,44 +892,70 @@ const ProjectRow = ({ projectTitle, photos, onImageClick }) => {
 const WorksPage = ({ photos, profile, ui, onImageClick }) => {
   const groupedByYearAndProject = photos.reduce((acc, photo) => {
     const year = photo.year ? String(photo.year).trim() : "Unsorted";
-    const project = photo.project ? String(photo.project).trim() : "Uncategorized";
+    const project = photo.project
+      ? String(photo.project).trim()
+      : "Uncategorized";
     if (!acc[year]) acc[year] = {};
     if (!acc[year][project]) acc[year][project] = [];
     acc[year][project].push(photo);
     return acc;
   }, {});
-  const sortedYears = Object.keys(groupedByYearAndProject).sort((a, b) => b - a);
-  
+  const sortedYears = Object.keys(groupedByYearAndProject).sort(
+    (a, b) => b - a
+  );
+
   const getSortedProjects = (year) => {
-     const projs = Object.keys(groupedByYearAndProject[year]);
-     return projs.sort((a, b) => {
-       const minA = Math.min(...groupedByYearAndProject[year][a].map(p => p.order || 0));
-       const minB = Math.min(...groupedByYearAndProject[year][b].map(p => p.order || 0));
-       return minA - minB;
-     });
+    const projs = Object.keys(groupedByYearAndProject[year]);
+    return projs.sort((a, b) => {
+      const minA = Math.min(
+        ...groupedByYearAndProject[year][a].map((p) => p.order || 0)
+      );
+      const minB = Math.min(
+        ...groupedByYearAndProject[year][b].map((p) => p.order || 0)
+      );
+      return minA - minB;
+    });
   };
 
   return (
     <div className="min-h-screen bg-neutral-950 text-white animate-fade-in-up">
       <div className="pt-28 md:pt-32 pb-32 px-4 md:px-12 container mx-auto max-w-[1920px]">
         {sortedYears.map((year) => (
-          <div key={year} className="mb-16 md:mb-12 flex flex-col md:flex-row gap-4 md:gap-8">
+          <div
+            key={year}
+            className="mb-16 md:mb-12 flex flex-col md:flex-row gap-4 md:gap-8"
+          >
             <div className="md:w-48 flex-shrink-0 sticky top-24 md:top-32 h-fit pointer-events-none z-10">
-              <span className="text-4xl md:text-2xl font-serif font-thin text-white/30 md:text-white/50 tracking-widest block leading-none md:-ml-2 transition-all font-serif">{year}</span>
+              <span className="text-4xl md:text-2xl font-serif font-thin text-white/30 md:text-white/50 tracking-widest block leading-none md:-ml-2 transition-all font-serif">
+                {year}
+              </span>
             </div>
             <div className="flex-grow flex flex-col gap-8 overflow-hidden mt-4 md:mt-0">
               {getSortedProjects(year).map((projectTitle) => {
-                const projectPhotos = groupedByYearAndProject[year][projectTitle].sort((a,b) => (a.order || 0) - (b.order || 0));
+                const projectPhotos = groupedByYearAndProject[year][
+                  projectTitle
+                ].sort((a, b) => (a.order || 0) - (b.order || 0));
                 return (
-                  <ProjectRow key={projectTitle} projectTitle={projectTitle} photos={projectPhotos} onImageClick={onImageClick} />
+                  <ProjectRow
+                    key={projectTitle}
+                    projectTitle={projectTitle}
+                    photos={projectPhotos}
+                    onImageClick={onImageClick}
+                  />
                 );
               })}
             </div>
           </div>
         ))}
-        {photos.length === 0 && <div className="text-center py-40 text-neutral-700 font-thin tracking-widest uppercase">Collection Empty</div>}
+        {photos.length === 0 && (
+          <div className="text-center py-40 text-neutral-700 font-thin tracking-widest uppercase">
+            Collection Empty
+          </div>
+        )}
         <div className="text-center pt-20 border-t border-neutral-900">
-          <p className="text-neutral-600 text-[10px] tracking-[0.3em] uppercase font-sans">© {new Date().getFullYear()} {profile.brandName}</p>
+          <p className="text-neutral-600 text-[10px] tracking-[0.3em] uppercase font-sans">
+            © {new Date().getFullYear()} {profile.brandName}
+          </p>
         </div>
       </div>
     </div>
@@ -660,107 +965,230 @@ const WorksPage = ({ photos, profile, ui, onImageClick }) => {
 // --- 4. 后台管理组件 ---
 
 const ProfileSettings = ({ settings, onUpdate }) => {
-  const [formData, setFormData] = useState(settings.profile);
-  const [activeLangTab, setActiveLangTab] = useState('cn');
+  const [formData, setFormData] = useState(settings.profile || {});
+  const [activeLangTab, setActiveLangTab] = useState("cn");
   const [uploading, setUploading] = useState(false);
 
-  useEffect(() => { if(settings.profile) setFormData(settings.profile); }, [settings.profile]);
+  useEffect(() => {
+    if (settings.profile) setFormData(settings.profile);
+  }, [settings.profile]);
 
-  const handleChange = (field, value) => setFormData(prev => ({ ...prev, [field]: value }));
-  const handleSocialChange = (field, value) => setFormData(prev => ({ ...prev, social: { ...(prev.social || {}), [field]: value } }));
-  const handleContentChange = (lang, field, value) => setFormData(prev => ({ ...prev, content: { ...prev.content, [lang]: { ...prev.content[lang], [field]: value } } }));
+  const handleChange = (field, value) =>
+    setFormData((prev) => ({ ...prev, [field]: value }));
+  const handleSocialChange = (field, value) =>
+    setFormData((prev) => ({
+      ...prev,
+      social: { ...(prev.social || {}), [field]: value },
+    }));
+  const handleContentChange = (lang, field, value) =>
+    setFormData((prev) => ({
+      ...prev,
+      content: {
+        ...prev.content,
+        [lang]: { ...prev.content[lang], [field]: value },
+      },
+    }));
 
   const handleImageUpload = async (e, field) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
-      const url = await uploadFileToStorage(e.target.files[0], `profile/${field}_${Date.now()}`);
+      const url = await uploadFileToStorage(
+        e.target.files[0],
+        `profile/${field}_${Date.now()}`
+      );
       handleChange(field, url);
-    } catch(err) { alert(err.message); }
+    } catch (err) {
+      alert(err.message);
+    }
     setUploading(false);
   };
 
-  const handleSave = () => { onUpdate({ ...settings, profile: formData }); alert('Profile saved!'); };
-  
-  // Safe access
+  const handleSave = () => {
+    onUpdate({ ...settings, profile: formData });
+    alert("Profile saved!");
+  };
+
   const currentContent = formData.content?.[activeLangTab] || {};
 
   return (
     <div className="max-w-3xl mx-auto space-y-8 pb-12">
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-6">
-         <h3 className="text-lg font-bold text-white flex items-center gap-2"><Globe className="w-5 h-5" /> Site Identity & Branding</h3>
-         <div className="flex gap-6">
-            <div className="w-1/3">
-               <label className="block text-xs text-neutral-500 uppercase mb-2">Portrait</label>
-               <label className="block relative group cursor-pointer aspect-[3/4] bg-black rounded border border-neutral-700 overflow-hidden">
-                 <img src={formData.heroImage} className="w-full h-full object-cover" />
-                 <input type="file" className="hidden" onChange={(e) => handleImageUpload(e, 'heroImage')} />
-               </label>
-            </div>
-            <div className="w-1/3">
-               <label className="block text-xs text-neutral-500 uppercase mb-2">Logo</label>
-               <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
-                 {formData.logoUrl ? <img src={formData.logoUrl} className="w-3/4 h-3/4 object-contain" /> : <span className="text-xs text-neutral-600">Upload</span>}
-                 <input type="file" className="hidden" onChange={(e) => handleImageUpload(e, 'logoUrl')} />
-               </label>
-            </div>
-            <div className="w-1/3">
-               <label className="block text-xs text-neutral-500 uppercase mb-2">Favicon</label>
-               <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
-                 {formData.faviconUrl ? <img src={formData.faviconUrl} className="w-1/2 h-1/2 object-contain" /> : <span className="text-xs text-neutral-600">Upload</span>}
-                 <input type="file" className="hidden" onChange={(e) => handleImageUpload(e, 'faviconUrl')} />
-               </label>
-            </div>
-         </div>
-         <div className="space-y-3">
-            <input className="w-full bg-black border border-neutral-700 rounded p-2 text-white text-sm" value={formData.siteTitle || ''} onChange={(e) => handleChange('siteTitle', e.target.value)} placeholder="Browser Title" />
-         </div>
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <Globe className="w-5 h-5" /> Site Identity & Branding
+        </h3>
+        <div className="flex gap-6">
+          <div className="w-1/3">
+            <label className="block text-xs text-neutral-500 uppercase mb-2">
+              Portrait
+            </label>
+            <label className="block relative group cursor-pointer aspect-[3/4] bg-black rounded border border-neutral-700 overflow-hidden">
+              <img
+                src={formData.heroImage}
+                className="w-full h-full object-cover"
+              />
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => handleImageUpload(e, "heroImage")}
+              />
+            </label>
+          </div>
+          <div className="w-1/3">
+            <label className="block text-xs text-neutral-500 uppercase mb-2">
+              Logo
+            </label>
+            <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
+              {formData.logoUrl ? (
+                <img
+                  src={formData.logoUrl}
+                  className="w-3/4 h-3/4 object-contain"
+                />
+              ) : (
+                <span className="text-xs text-neutral-600">Upload</span>
+              )}
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => handleImageUpload(e, "logoUrl")}
+              />
+            </label>
+          </div>
+          <div className="w-1/3">
+            <label className="block text-xs text-neutral-500 uppercase mb-2">
+              Favicon
+            </label>
+            <label className="block relative group cursor-pointer aspect-square bg-black rounded border border-neutral-700 overflow-hidden flex items-center justify-center">
+              {formData.faviconUrl ? (
+                <img
+                  src={formData.faviconUrl}
+                  className="w-1/2 h-1/2 object-contain"
+                />
+              ) : (
+                <span className="text-xs text-neutral-600">Upload</span>
+              )}
+              <input
+                type="file"
+                className="hidden"
+                onChange={(e) => handleImageUpload(e, "faviconUrl")}
+              />
+            </label>
+          </div>
+        </div>
+        <div className="space-y-3">
+          <input
+            className="w-full bg-black border border-neutral-700 rounded p-2 text-white text-sm"
+            value={formData.siteTitle || ""}
+            onChange={(e) => handleChange("siteTitle", e.target.value)}
+            placeholder="Browser Title"
+          />
+        </div>
       </div>
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
-        <h3 className="text-lg font-bold text-white flex items-center gap-2"><User className="w-5 h-5" /> Basic Info</h3>
-        <input className="w-full bg-black border border-neutral-700 rounded p-2 text-white" placeholder="Brand Name" value={formData.brandName} onChange={(e) => handleChange('brandName', e.target.value)} />
-        <input className="w-full bg-black border border-neutral-700 rounded p-2 text-white" placeholder="Email" value={formData.email} onChange={(e) => handleChange('email', e.target.value)} />
-        <input className="w-full bg-black border border-neutral-700 rounded p-2 text-white" placeholder="Location" value={formData.location} onChange={(e) => handleChange('location', e.target.value)} />
+        <h3 className="text-lg font-bold text-white flex items-center gap-2">
+          <User className="w-5 h-5" /> Basic Info
+        </h3>
+        <input
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+          placeholder="Brand Name"
+          value={formData.brandName}
+          onChange={(e) => handleChange("brandName", e.target.value)}
+        />
+        <input
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+          placeholder="Email"
+          value={formData.email}
+          onChange={(e) => handleChange("email", e.target.value)}
+        />
+        <input
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+          placeholder="Location"
+          value={formData.location}
+          onChange={(e) => handleChange("location", e.target.value)}
+        />
       </div>
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
         <h3 className="text-lg font-bold text-white">Social Media</h3>
         <div className="grid grid-cols-1 gap-3">
-           <input className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm" placeholder="Instagram" value={formData.social?.instagram || ''} onChange={(e) => handleSocialChange('instagram', e.target.value)} />
-           <input className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm" placeholder="TikTok" value={formData.social?.tiktok || ''} onChange={(e) => handleSocialChange('tiktok', e.target.value)} />
-           <input className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm" placeholder="Red Note" value={formData.social?.rednote || ''} onChange={(e) => handleSocialChange('rednote', e.target.value)} />
+          <input
+            className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm"
+            placeholder="Instagram"
+            value={formData.social?.instagram || ""}
+            onChange={(e) => handleSocialChange("instagram", e.target.value)}
+          />
+          <input
+            className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm"
+            placeholder="TikTok"
+            value={formData.social?.tiktok || ""}
+            onChange={(e) => handleSocialChange("tiktok", e.target.value)}
+          />
+          <input
+            className="bg-black p-2 rounded border border-neutral-700 w-full text-white text-sm"
+            placeholder="Red Note"
+            value={formData.social?.rednote || ""}
+            onChange={(e) => handleSocialChange("rednote", e.target.value)}
+          />
         </div>
       </div>
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800 space-y-4">
-         <div className="flex justify-between">
-            <h3 className="text-lg font-bold text-white">Biography</h3>
-            <div className="flex gap-2">{['cn', 'en', 'th'].map(l => <button key={l} onClick={() => setActiveLangTab(l)} className={`px-2 text-xs uppercase ${activeLangTab===l?'text-white':'text-neutral-500'}`}>{l}</button>)}</div>
-         </div>
-         <textarea className="w-full bg-black border border-neutral-700 rounded p-2 text-white h-32" value={currentContent.aboutText || ''} onChange={(e) => handleContentChange(activeLangTab, 'aboutText', e.target.value)} />
+        <div className="flex justify-between">
+          <h3 className="text-lg font-bold text-white">Biography</h3>
+          <div className="flex gap-2">
+            {["cn", "en", "th"].map((l) => (
+              <button
+                key={l}
+                onClick={() => setActiveLangTab(l)}
+                className={`px-2 text-xs uppercase ${
+                  activeLangTab === l ? "text-white" : "text-neutral-500"
+                }`}
+              >
+                {l}
+              </button>
+            ))}
+          </div>
+        </div>
+        <textarea
+          className="w-full bg-black border border-neutral-700 rounded p-2 text-white h-32"
+          value={currentContent.aboutText || ""}
+          onChange={(e) =>
+            handleContentChange(activeLangTab, "aboutText", e.target.value)
+          }
+        />
       </div>
-      <button onClick={handleSave} className="w-full bg-white text-black font-bold py-3 rounded hover:bg-neutral-200 transition-colors">Save All Profile Settings</button>
+      <button
+        onClick={handleSave}
+        className="w-full bg-white text-black font-bold py-3 rounded hover:bg-neutral-200 transition-colors"
+      >
+        Save All Profile Settings
+      </button>
     </div>
   );
 };
 
 const SlidesSettings = ({ settings, onUpdate }) => {
   const [slides, setSlides] = useState(settings.profile?.heroSlides || []);
-  const [form, setForm] = useState({ title: '', link: '', url: '' });
+  const [form, setForm] = useState({ title: "", link: "", url: "" });
   const [editingSlide, setEditingSlide] = useState(null);
   const [uploading, setUploading] = useState(false);
   const [draggedSlide, setDraggedSlide] = useState(null);
 
   useEffect(() => {
-    if(settings.profile?.heroSlides) setSlides(settings.profile.heroSlides);
+    if (settings.profile?.heroSlides) setSlides(settings.profile.heroSlides);
   }, [settings.profile?.heroSlides]);
 
   const handleFileUpload = async (e) => {
     if (!e.target.files[0]) return;
     setUploading(true);
     try {
-      const file = await compressImage(e.target.files[0], 1920, 0.85); 
-      const url = await uploadFileToStorage(file || e.target.files[0], `slides/slide_${Date.now()}`);
-      setForm(prev => ({ ...prev, url }));
-    } catch (err) { alert(err.message); }
+      const file = await compressImage(e.target.files[0], 1920, 0.85);
+      const url = await uploadFileToStorage(
+        file || e.target.files[0],
+        `slides/slide_${Date.now()}`
+      );
+      setForm((prev) => ({ ...prev, url }));
+    } catch (err) {
+      alert(err.message);
+    }
     setUploading(false);
   };
 
@@ -768,25 +1196,34 @@ const SlidesSettings = ({ settings, onUpdate }) => {
     if (!form.url) return alert("Please upload an image");
     let newSlides = [...slides];
     if (editingSlide !== null) {
-      newSlides[editingSlide] = { ...form, type: 'image' };
+      newSlides[editingSlide] = { ...form, type: "image" };
       setEditingSlide(null);
     } else {
-      newSlides.push({ ...form, type: 'image' });
+      newSlides.push({ ...form, type: "image" });
     }
     setSlides(newSlides);
-    setForm({ title: '', link: '', url: '' });
-    onUpdate({ ...settings, profile: { ...settings.profile, heroSlides: newSlides } });
+    setForm({ title: "", link: "", url: "" });
+    onUpdate({
+      ...settings,
+      profile: { ...settings.profile, heroSlides: newSlides },
+    });
   };
 
-  const handleEdit = (idx) => { setEditingSlide(idx); setForm(slides[idx]); };
+  const handleEdit = (idx) => {
+    setEditingSlide(idx);
+    setForm(slides[idx]);
+  };
   const handleDelete = (idx) => {
     if (confirm("Delete?")) {
-       const newSlides = slides.filter((_, i) => i !== idx);
-       setSlides(newSlides);
-       onUpdate({ ...settings, profile: { ...settings.profile, heroSlides: newSlides } });
+      const newSlides = slides.filter((_, i) => i !== idx);
+      setSlides(newSlides);
+      onUpdate({
+        ...settings,
+        profile: { ...settings.profile, heroSlides: newSlides },
+      });
     }
   };
-  
+
   const onDragStart = (e, index) => setDraggedSlide(slides[index]);
   const onDragOver = (e, index) => {
     e.preventDefault();
@@ -799,36 +1236,90 @@ const SlidesSettings = ({ settings, onUpdate }) => {
   };
   const onDragEnd = () => {
     setDraggedSlide(null);
-    onUpdate({ ...settings, profile: { ...settings.profile, heroSlides: slides } });
+    onUpdate({
+      ...settings,
+      profile: { ...settings.profile, heroSlides: slides },
+    });
   };
 
   return (
     <div className="max-w-4xl mx-auto space-y-8">
       <div className="bg-neutral-900 p-6 rounded-xl border border-neutral-800">
-        <h3 className="text-lg font-bold text-white mb-4">{editingSlide !== null ? "Edit Slide" : "Add New Slide"}</h3>
+        <h3 className="text-lg font-bold text-white mb-4">
+          {editingSlide !== null ? "Edit Slide" : "Add New Slide"}
+        </h3>
         <div className="flex flex-col md:flex-row gap-6">
-           <div className="w-full md:w-1/3 aspect-video bg-black rounded border border-neutral-700 flex items-center justify-center relative overflow-hidden group">
-             {form.url ? <img src={form.url} className="w-full h-full object-cover" /> : <span className="text-xs text-neutral-600">Upload</span>}
-             <input type="file" className="absolute inset-0 opacity-0 cursor-pointer" onChange={handleFileUpload} />
-             {uploading && <div className="absolute inset-0 bg-black/50 flex items-center justify-center"><Loader2 className="animate-spin" /></div>}
-           </div>
-           <div className="w-full md:w-2/3 space-y-3">
-             <input className="w-full bg-black border border-neutral-700 rounded p-2 text-white" placeholder="Title" value={form.title} onChange={e => setForm({...form, title: e.target.value})} />
-             <input className="w-full bg-black border border-neutral-700 rounded p-2 text-white" placeholder="Link URL" value={form.link} onChange={e => setForm({...form, link: e.target.value})} />
-             <button onClick={handleSaveSlide} className="px-4 py-2 bg-white text-black font-bold rounded">Save</button>
-           </div>
+          <div className="w-full md:w-1/3 aspect-video bg-black rounded border border-neutral-700 flex items-center justify-center relative overflow-hidden group">
+            {form.url ? (
+              <img src={form.url} className="w-full h-full object-cover" />
+            ) : (
+              <span className="text-xs text-neutral-600">Upload</span>
+            )}
+            <input
+              type="file"
+              className="absolute inset-0 opacity-0 cursor-pointer"
+              onChange={handleFileUpload}
+            />
+            {uploading && (
+              <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+                <Loader2 className="animate-spin" />
+              </div>
+            )}
+          </div>
+          <div className="w-full md:w-2/3 space-y-3">
+            <input
+              className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+              placeholder="Title"
+              value={form.title}
+              onChange={(e) => setForm({ ...form, title: e.target.value })}
+            />
+            <input
+              className="w-full bg-black border border-neutral-700 rounded p-2 text-white"
+              placeholder="Link URL"
+              value={form.link}
+              onChange={(e) => setForm({ ...form, link: e.target.value })}
+            />
+            <button
+              onClick={handleSaveSlide}
+              className="px-4 py-2 bg-white text-black font-bold rounded"
+            >
+              Save
+            </button>
+          </div>
         </div>
       </div>
       <div className="space-y-2">
         {slides.map((s, i) => (
-          <div key={i} draggable onDragStart={(e) => onDragStart(e, i)} onDragOver={(e) => onDragOver(e, i)} onDragEnd={onDragEnd} className="bg-neutral-900 p-3 rounded border border-neutral-800 flex gap-4 items-center cursor-move">
-             <Menu className="text-neutral-600" size={20} />
-             <img src={s.url} className="w-16 h-10 object-cover rounded bg-black" />
-             <div className="flex-grow text-sm text-white">{s.title || 'Untitled'}</div>
-             <div className="flex gap-2">
-               <button onClick={() => handleEdit(i)} className="p-1 hover:text-white text-neutral-500"><Edit size={14} /></button>
-               <button onClick={() => handleDelete(i)} className="p-1 hover:text-red-500 text-neutral-500"><Trash size={14} /></button>
-             </div>
+          <div
+            key={i}
+            draggable
+            onDragStart={(e) => onDragStart(e, i)}
+            onDragOver={(e) => onDragOver(e, i)}
+            onDragEnd={onDragEnd}
+            className="bg-neutral-900 p-3 rounded border border-neutral-800 flex gap-4 items-center cursor-move"
+          >
+            <Menu className="text-neutral-600" size={20} />
+            <img
+              src={s.url}
+              className="w-16 h-10 object-cover rounded bg-black"
+            />
+            <div className="flex-grow text-sm text-white">
+              {s.title || "Untitled"}
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => handleEdit(i)}
+                className="p-1 hover:text-white text-neutral-500"
+              >
+                <Edit size={14} />
+              </button>
+              <button
+                onClick={() => handleDelete(i)}
+                className="p-1 hover:text-red-500 text-neutral-500"
+              >
+                <Trash size={14} />
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -836,14 +1327,23 @@ const SlidesSettings = ({ settings, onUpdate }) => {
   );
 };
 
-const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto, onBatchUpdate }) => {
+const PhotosManager = ({
+  photos,
+  onAddPhoto,
+  onDeletePhoto,
+  onBatchUpdate,
+}) => {
   const [uploading, setUploading] = useState(false);
   const [files, setFiles] = useState([]);
-  const [uploadYear, setUploadYear] = useState(new Date().getFullYear().toString());
+  const [uploadYear, setUploadYear] = useState(
+    new Date().getFullYear().toString()
+  );
   const [uploadProject, setUploadProject] = useState("");
   const [localPhotos, setLocalPhotos] = useState(photos);
 
-  useEffect(() => { setLocalPhotos(photos); }, [photos]);
+  useEffect(() => {
+    setLocalPhotos(photos);
+  }, [photos]);
 
   const grouped = localPhotos.reduce((acc, p) => {
     const y = p.year ? String(p.year).trim() : "Unsorted";
@@ -854,13 +1354,14 @@ const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto, onBatchUpdate }) => 
     return acc;
   }, {});
 
+  // 排序项目: 修复项目顺序问题
   const getSortedProjects = (year) => {
-     const projs = Object.keys(grouped[year]);
-     return projs.sort((a, b) => {
-       const minA = Math.min(...grouped[year][a].map(p => p.order || 0));
-       const minB = Math.min(...grouped[year][b].map(p => p.order || 0));
-       return minA - minB;
-     });
+    const projs = Object.keys(grouped[year]);
+    return projs.sort((a, b) => {
+      const minA = Math.min(...grouped[year][a].map((p) => p.order || 0));
+      const minB = Math.min(...grouped[year][b].map((p) => p.order || 0));
+      return minA - minB;
+    });
   };
 
   const handleBatchUpload = async () => {
@@ -872,186 +1373,367 @@ const PhotosManager = ({ photos, onAddPhoto, onDeletePhoto, onBatchUpdate }) => 
         const timestamp = Date.now();
         const thumbFile = await compressImage(file, 400, 0.6); // Aggressive thumbnail
         let thumbUrl = "";
-        if (thumbFile) thumbUrl = await uploadFileToStorage(thumbFile, `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}_thumb.jpg`);
-        
+        if (thumbFile)
+          thumbUrl = await uploadFileToStorage(
+            thumbFile,
+            `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}_thumb.jpg`
+          );
+
+        // 自动压缩原图到 2K
         const optimizedFile = await compressImage(file, 1920, 0.85);
-        const url = await uploadFileToStorage(optimizedFile || file, `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`);
-        
-        return onAddPhoto({ title: file.name.split('.')[0], year: uploadYear.trim(), project: uploadProject.trim(), url, thumbnailUrl: thumbUrl, order: 9999, isVisible: true });
+        const url = await uploadFileToStorage(
+          optimizedFile || file,
+          `photos/${uploadYear}/${uploadProject.trim()}/${timestamp}_${idx}`
+        );
+
+        return onAddPhoto({
+          title: file.name.split(".")[0],
+          year: uploadYear.trim(),
+          project: uploadProject.trim(),
+          url,
+          thumbnailUrl: thumbUrl,
+          order: 9999,
+          isVisible: true,
+        });
       });
       await Promise.all(promises);
       setFiles([]);
       alert("Uploaded!");
-    } catch(e) { alert(e.message); }
+    } catch (e) {
+      alert(e.message);
+    }
     setUploading(false);
   };
 
   const handleProjectUpload = async (e, year, project) => {
-     const fs = e.target.files;
-     if (!fs.length) return;
-     setUploading(true);
-     try {
-       const promises = Array.from(fs).map(async (file, idx) => {
-         const ts = Date.now();
-         const thumb = await compressImage(file, 400, 0.6);
-         let tUrl = "";
-         if (thumb) tUrl = await uploadFileToStorage(thumb, `photos/${year}/${project}/${ts}_${idx}_thumb.jpg`);
-         
-         const optimizedFile = await compressImage(file, 1920, 0.85);
-         const url = await uploadFileToStorage(optimizedFile || file, `photos/${year}/${project}/${ts}_${idx}`);
-         return onAddPhoto({ title: file.name.split('.')[0], year, project, url, thumbnailUrl: tUrl, order: 9999, isVisible: true });
-       });
-       await Promise.all(promises);
-       alert("Added!");
-     } catch(e) { alert(e.message); }
-     setUploading(false);
+    const fs = e.target.files;
+    if (!fs.length) return;
+    setUploading(true);
+    try {
+      const promises = Array.from(fs).map(async (file, idx) => {
+        const ts = Date.now();
+        const thumb = await compressImage(file, 400, 0.6);
+        let tUrl = "";
+        if (thumb)
+          tUrl = await uploadFileToStorage(
+            thumb,
+            `photos/${year}/${project}/${ts}_${idx}_thumb.jpg`
+          );
+
+        const optimizedFile = await compressImage(file, 1920, 0.85);
+        const url = await uploadFileToStorage(
+          optimizedFile || file,
+          `photos/${year}/${project}/${ts}_${idx}`
+        );
+        return onAddPhoto({
+          title: file.name.split(".")[0],
+          year,
+          project,
+          url,
+          thumbnailUrl: tUrl,
+          order: 9999,
+          isVisible: true,
+        });
+      });
+      await Promise.all(promises);
+      alert("Added!");
+    } catch (e) {
+      alert(e.message);
+    }
+    setUploading(false);
   };
 
   const handleDeleteProject = async (project, year) => {
-     const toDelete = photos.filter(p => (p.year === year || (!p.year && year==='Unsorted')) && (p.project === project));
-     if (confirm(`Delete project "${project}" (${toDelete.length} photos)?`)) {
-        setUploading(true);
-        await Promise.all(toDelete.map(p => onDeletePhoto(p.id)));
-        setUploading(false);
-     }
+    const toDelete = photos.filter(
+      (p) =>
+        (p.year === year || (!p.year && year === "Unsorted")) &&
+        p.project === project
+    );
+    if (confirm(`Delete project "${project}" (${toDelete.length} photos)?`)) {
+      setUploading(true);
+      await Promise.all(toDelete.map((p) => onDeletePhoto(p.id)));
+      setUploading(false);
+    }
   };
-  
+
   const handleRenameProject = async (oldName, year) => {
-     const newName = prompt("Rename to:", oldName);
-     if (newName && newName !== oldName) {
-        const toUpdate = photos.filter(p => (p.year === year || (!p.year && year==='Unsorted')) && (p.project === oldName));
-        onBatchUpdate(toUpdate.map(p => ({ id: p.id, project: newName })));
-     }
+    const newName = prompt("Rename to:", oldName);
+    if (newName && newName !== oldName) {
+      const toUpdate = photos.filter(
+        (p) =>
+          (p.year === year || (!p.year && year === "Unsorted")) &&
+          p.project === oldName
+      );
+      onBatchUpdate(toUpdate.map((p) => ({ id: p.id, project: newName })));
+    }
   };
 
   const moveProject = (year, proj, dir) => {
-     const projs = getSortedProjects(year);
-     const idx = projs.indexOf(proj);
-     if (idx === -1) return;
-     const newIdx = dir === 'up' ? idx - 1 : idx + 1;
-     if (newIdx < 0 || newIdx >= projs.length) return;
-     
-     const projA = projs[idx];
-     const projB = projs[newIdx];
-     
-     const newOrderProjs = [...projs];
-     [newOrderProjs[idx], newOrderProjs[newIdx]] = [newOrderProjs[newIdx], newOrderProjs[idx]];
-     
-     let counter = 1;
-     const newLocal = [...localPhotos];
-     
-     const otherYearPhotos = newLocal.filter(p => p.year !== year);
-     const thisYearPhotos = [];
+    const projs = getSortedProjects(year);
+    const idx = projs.indexOf(proj);
+    if (idx === -1) return;
+    const newIdx = dir === "up" ? idx - 1 : idx + 1;
+    if (newIdx < 0 || newIdx >= projs.length) return;
 
-     newOrderProjs.forEach(pName => {
-        const pPhotos = grouped[year][pName];
-        pPhotos.sort((a,b) => (a.order||0)-(b.order||0));
-        pPhotos.forEach(p => {
-           thisYearPhotos.push({ ...p, order: counter++ });
-        });
-     });
-     
-     setLocalPhotos([...otherYearPhotos, ...thisYearPhotos]);
+    const projA = projs[idx];
+    const projB = projs[newIdx];
+
+    const newOrderProjs = [...projs];
+    [newOrderProjs[idx], newOrderProjs[newIdx]] = [
+      newOrderProjs[newIdx],
+      newOrderProjs[idx],
+    ];
+
+    let counter = 1;
+    const newLocal = [...localPhotos];
+
+    const otherYearPhotos = newLocal.filter((p) => p.year !== year);
+    const thisYearPhotos = [];
+
+    newOrderProjs.forEach((pName) => {
+      const pPhotos = grouped[year][pName];
+      pPhotos.sort((a, b) => (a.order || 0) - (b.order || 0));
+      pPhotos.forEach((p) => {
+        thisYearPhotos.push({ ...p, order: counter++ });
+      });
+    });
+
+    setLocalPhotos([...otherYearPhotos, ...thisYearPhotos]);
   };
 
   const handleSaveOrder = () => {
-     onBatchUpdate(localPhotos.map((p, i) => ({ id: p.id, order: p.order })));
-     alert("Order Saved");
+    onBatchUpdate(localPhotos.map((p, i) => ({ id: p.id, order: p.order })));
+    alert("Order Saved");
   };
 
   const [dragged, setDragged] = useState(null);
   const onDragStart = (e, p) => setDragged(p);
   const onDragOver = (e, target) => {
-     e.preventDefault();
-     if (!dragged || dragged.id === target.id || dragged.project !== target.project) return;
-     const items = [...localPhotos];
-     const f = items.findIndex(i => i.id === dragged.id);
-     const t = items.findIndex(i => i.id === target.id);
-     items.splice(f, 1);
-     items.splice(t, 0, dragged);
-     setLocalPhotos(items);
+    e.preventDefault();
+    if (
+      !dragged ||
+      dragged.id === target.id ||
+      dragged.project !== target.project
+    )
+      return;
+    const items = [...localPhotos];
+    const f = items.findIndex((i) => i.id === dragged.id);
+    const t = items.findIndex((i) => i.id === target.id);
+    items.splice(f, 1);
+    items.splice(t, 0, dragged);
+    setLocalPhotos(items);
   };
 
   return (
     <div className="space-y-12">
-       <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl sticky top-0 z-20 shadow-xl">
-         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-           <input className="bg-black border border-neutral-700 p-2 text-white rounded" value={uploadYear} onChange={e => setUploadYear(e.target.value)} placeholder="Year" />
-           <input className="bg-black border border-neutral-700 p-2 text-white rounded" value={uploadProject} onChange={e => setUploadProject(e.target.value)} placeholder="Project Name" />
-           <div className="relative border border-dashed border-neutral-600 bg-black rounded flex items-center justify-center cursor-pointer hover:border-white">
-             <span className="text-xs text-neutral-400">{files.length ? `${files.length} files` : "Select Photos"}</span>
-             <input type="file" multiple className="absolute inset-0 opacity-0" onChange={e => setFiles(e.target.files)} />
-           </div>
-         </div>
-         <button onClick={handleBatchUpload} disabled={uploading} className="w-full mt-4 bg-white text-black font-bold py-2 rounded hover:bg-neutral-200">{uploading ? "Uploading..." : "Upload"}</button>
-       </div>
-       
-       <div className="space-y-8 pb-24">
-          <div className="flex justify-end"><button onClick={handleSaveOrder} className="bg-white text-black px-4 py-2 rounded font-bold text-sm">Save Order</button></div>
-          {Object.keys(grouped).sort((a,b)=>b-a).map(year => (
-             <div key={year}>
-                <h4 className="text-neutral-500 font-serif text-2xl border-b border-neutral-800 pb-2 mb-4">{year}</h4>
-                {getSortedProjects(year).map(proj => (
-                   <div key={proj} className="bg-neutral-900/30 p-4 rounded-xl border border-neutral-800 mb-6">
-                      <div className="flex justify-between mb-4">
-                         <div className="flex items-center gap-2">
-                            <span className="text-white font-bold">{proj}</span>
-                            <button onClick={() => handleRenameProject(proj, year)} className="text-neutral-500 hover:text-white"><Edit size={14}/></button>
-                            <button onClick={() => handleDeleteProject(proj, year)} className="text-red-500 hover:text-red-400"><Trash size={14}/></button>
-                         </div>
-                         <div className="flex gap-1">
-                            <button onClick={() => moveProject(year, proj, 'up')} className="p-1 bg-neutral-800 rounded"><ArrowUp size={14}/></button>
-                            <button onClick={() => moveProject(year, proj, 'down')} className="p-1 bg-neutral-800 rounded"><ArrowDown size={14}/></button>
-                         </div>
-                      </div>
-                      <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                         {grouped[year][proj].sort((a,b)=>(a.order||0)-(b.order||0)).map(p => (
-                            <div 
-                              key={p.id} 
-                              draggable 
-                              onDragStart={e => onDragStart(e, p)} 
-                              onDragOver={e => onDragOver(e, p)} 
-                              className="aspect-square bg-black rounded relative group cursor-move"
-                            >
-                               <img src={p.thumbnailUrl || p.url} className="w-full h-full object-cover opacity-80" />
-                               <button onClick={() => { if(confirm("Delete?")) onDeletePhoto(p.id); }} className="absolute top-0 right-0 bg-red-500 text-white p-1 opacity-0 group-hover:opacity-100 z-10"><Trash size={10}/></button>
-                            </div>
-                         ))}
-                         <div className="aspect-square border border-dashed border-neutral-700 flex items-center justify-center relative cursor-pointer hover:border-white">
-                            <Plus className="text-neutral-500" />
-                            <input type="file" multiple className="absolute inset-0 opacity-0" onChange={e => handleProjectUpload(e, year, proj)} />
-                         </div>
-                      </div>
-                   </div>
-                ))}
-             </div>
+      <div className="bg-neutral-900 border border-neutral-800 p-6 rounded-xl sticky top-0 z-20 shadow-xl">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <input
+            className="bg-black border border-neutral-700 p-2 text-white rounded"
+            value={uploadYear}
+            onChange={(e) => setUploadYear(e.target.value)}
+            placeholder="Year"
+          />
+          <input
+            className="bg-black border border-neutral-700 p-2 text-white rounded"
+            value={uploadProject}
+            onChange={(e) => setUploadProject(e.target.value)}
+            placeholder="Project Name"
+          />
+          <div className="relative border border-dashed border-neutral-600 bg-black rounded flex items-center justify-center cursor-pointer hover:border-white">
+            <span className="text-xs text-neutral-400">
+              {files.length ? `${files.length} files` : "Select Photos"}
+            </span>
+            <input
+              type="file"
+              multiple
+              className="absolute inset-0 opacity-0"
+              onChange={(e) => setFiles(e.target.files)}
+            />
+          </div>
+        </div>
+        <button
+          onClick={handleBatchUpload}
+          disabled={uploading}
+          className="w-full mt-4 bg-white text-black font-bold py-2 rounded hover:bg-neutral-200"
+        >
+          {uploading ? "Uploading..." : "Upload"}
+        </button>
+      </div>
+
+      <div className="space-y-8 pb-24">
+        <div className="flex justify-end">
+          <button
+            onClick={handleSaveOrder}
+            className="bg-white text-black px-4 py-2 rounded font-bold text-sm"
+          >
+            Save Order
+          </button>
+        </div>
+        {Object.keys(grouped)
+          .sort((a, b) => b - a)
+          .map((year) => (
+            <div key={year}>
+              <h4 className="text-neutral-500 font-serif text-2xl border-b border-neutral-800 pb-2 mb-4">
+                {year}
+              </h4>
+              {getSortedProjects(year).map((proj) => (
+                <div
+                  key={proj}
+                  className="bg-neutral-900/30 p-4 rounded-xl border border-neutral-800 mb-6"
+                >
+                  <div className="flex justify-between mb-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-white font-bold">{proj}</span>
+                      <button
+                        onClick={() => handleRenameProject(proj, year)}
+                        className="text-neutral-500 hover:text-white"
+                      >
+                        <Edit size={14} />
+                      </button>
+                      <button
+                        onClick={() => handleDeleteProject(proj, year)}
+                        className="text-red-500 hover:text-red-400"
+                      >
+                        <Trash size={14} />
+                      </button>
+                    </div>
+                    <div className="flex gap-1">
+                      <button
+                        onClick={() => moveProject(year, proj, "up")}
+                        className="p-1 bg-neutral-800 rounded"
+                      >
+                        <ArrowUp size={14} />
+                      </button>
+                      <button
+                        onClick={() => moveProject(year, proj, "down")}
+                        className="p-1 bg-neutral-800 rounded"
+                      >
+                        <ArrowDown size={14} />
+                      </button>
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
+                    {grouped[year][proj]
+                      .sort((a, b) => (a.order || 0) - (b.order || 0))
+                      .map((p) => (
+                        <div
+                          key={p.id}
+                          draggable
+                          onDragStart={(e) => onDragStart(e, p)}
+                          onDragOver={(e) => onDragOver(e, p)}
+                          className="aspect-square bg-black rounded relative group cursor-move"
+                        >
+                          <img
+                            src={p.thumbnailUrl || p.url}
+                            className="w-full h-full object-cover opacity-80"
+                          />
+                          <div className="absolute top-1 left-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 text-neutral-400 pointer-events-none">
+                            <Menu size={14} />
+                          </div>
+                          <button
+                            onClick={() => {
+                              if (confirm("Delete?")) onDeletePhoto(p.id);
+                            }}
+                            className="absolute top-0 right-0 bg-red-500 text-white p-1 opacity-0 group-hover:opacity-100 z-10"
+                          >
+                            <Trash size={10} />
+                          </button>
+                        </div>
+                      ))}
+                    <div className="aspect-square border border-dashed border-neutral-700 flex items-center justify-center relative cursor-pointer hover:border-white">
+                      <Plus className="text-neutral-500" />
+                      <input
+                        type="file"
+                        multiple
+                        className="absolute inset-0 opacity-0"
+                        onChange={(e) => handleProjectUpload(e, year, proj)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           ))}
-       </div>
+      </div>
     </div>
   );
 };
 
-const AdminDashboard = ({ photos, settings, onLogout, onAddPhoto, onDeletePhoto, onUpdateSettings, onBatchUpdate }) => {
+const AdminDashboard = ({
+  photos,
+  settings,
+  onLogout,
+  onAddPhoto,
+  onDeletePhoto,
+  onUpdateSettings,
+  onBatchUpdate,
+}) => {
   const [tab, setTab] = useState("photos");
   return (
     <div className="min-h-screen bg-neutral-900 text-neutral-200 font-sans flex flex-col">
       <div className="h-16 border-b border-neutral-800 flex items-center justify-between px-6 bg-neutral-950">
-         <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif"><Settings className="w-5 h-5" /> T8DAY CMS</h1>
-         <button onClick={onLogout} className="flex items-center gap-2 text-red-500 hover:text-red-400 text-sm font-bold bg-neutral-900 px-4 py-2 rounded"><LogOut className="w-4 h-4" /> Logout</button>
+        <h1 className="text-xl font-bold text-white flex items-center gap-2 font-serif">
+          <Settings className="w-5 h-5" /> T8DAY CMS
+        </h1>
+        <button
+          onClick={onLogout}
+          className="flex items-center gap-2 text-red-500 hover:text-red-400 text-sm font-bold bg-neutral-900 px-4 py-2 rounded"
+        >
+          <LogOut className="w-4 h-4" /> Logout
+        </button>
       </div>
-      
+
       <div className="flex flex-1 overflow-hidden flex-col md:flex-row">
         <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-neutral-800 p-4 md:p-6 flex flex-col bg-neutral-950 flex-shrink-0">
           <div className="flex md:flex-col gap-2 overflow-x-auto md:overflow-visible">
-            <button onClick={() => setTab("photos")} className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${tab === "photos" ? "bg-white text-black font-bold" : "text-neutral-500 hover:text-white"}`}>Photos & Projects</button>
-            <button onClick={() => setTab("slides")} className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${tab === "slides" ? "bg-white text-black font-bold" : "text-neutral-500 hover:text-white"}`}>Hero Slides</button>
-            <button onClick={() => setTab("profile")} className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${tab === "profile" ? "bg-white text-black font-bold" : "text-neutral-500 hover:text-white"}`}>Profile & Settings</button>
+            <button
+              onClick={() => setTab("photos")}
+              className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                tab === "photos"
+                  ? "bg-white text-black font-bold"
+                  : "text-neutral-500 hover:text-white"
+              }`}
+            >
+              Photos & Projects
+            </button>
+            <button
+              onClick={() => setTab("slides")}
+              className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                tab === "slides"
+                  ? "bg-white text-black font-bold"
+                  : "text-neutral-500 hover:text-white"
+              }`}
+            >
+              Hero Slides
+            </button>
+            <button
+              onClick={() => setTab("profile")}
+              className={`flex-shrink-0 w-auto md:w-full text-left px-3 py-2 rounded text-sm transition-colors ${
+                tab === "profile"
+                  ? "bg-white text-black font-bold"
+                  : "text-neutral-500 hover:text-white"
+              }`}
+            >
+              Profile & Settings
+            </button>
           </div>
         </div>
         <div className="flex-1 p-4 md:p-8 overflow-y-auto">
-          {tab === "photos" && <PhotosManager photos={photos} onAddPhoto={onAddPhoto} onDeletePhoto={onDeletePhoto} onBatchUpdate={onBatchUpdate} />}
-          {tab === "slides" && <SlidesSettings settings={settings} onUpdate={onUpdateSettings} />}
-          {tab === "profile" && <ProfileSettings settings={settings} onUpdate={onUpdateSettings} />}
+          {tab === "photos" && (
+            <PhotosManager
+              photos={photos}
+              onAddPhoto={onAddPhoto}
+              onDeletePhoto={onDeletePhoto}
+              onBatchUpdate={onBatchUpdate}
+            />
+          )}
+          {tab === "slides" && (
+            <SlidesSettings settings={settings} onUpdate={onUpdateSettings} />
+          )}
+          {tab === "profile" && (
+            <ProfileSettings settings={settings} onUpdate={onUpdateSettings} />
+          )}
         </div>
       </div>
     </div>
@@ -1062,9 +1744,9 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   // Helper to get initial state from URL
   const getInitialState = () => {
     const path = window.location.pathname;
-    if (path === '/about') return { view: 'home', showAbout: true };
-    if (path === '/works') return { view: 'works', showAbout: false };
-    return { view: 'home', showAbout: false };
+    if (path === "/about") return { view: "home", showAbout: true };
+    if (path === "/works") return { view: "works", showAbout: false };
+    return { view: "home", showAbout: false };
   };
 
   const [state, setState] = useState(getInitialState);
@@ -1074,14 +1756,26 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [currentSlideIndex, setCurrentSlideIndex] = useState(0);
   const [lang, setLang] = useState("en");
-  const [lightboxImages, setLightboxImages] = useState([]); 
+  const [lightboxImages, setLightboxImages] = useState([]);
 
   const rawProfile = settings?.profile || {};
-  const profile = { ...DEFAULT_PROFILE, ...rawProfile, content: { cn: { ...DEFAULT_PROFILE.content.cn, ...(rawProfile.content?.cn || {}) }, en: { ...DEFAULT_PROFILE.content.en, ...(rawProfile.content?.en || {}) }, th: { ...DEFAULT_PROFILE.content.th, ...(rawProfile.content?.th || {}) } } };
-  const slides = profile.heroSlides && profile.heroSlides.length > 0 ? profile.heroSlides : DEFAULT_SLIDES;
+  const profile = {
+    ...DEFAULT_PROFILE,
+    ...rawProfile,
+    content: {
+      cn: { ...DEFAULT_PROFILE.content.cn, ...(rawProfile.content?.cn || {}) },
+      en: { ...DEFAULT_PROFILE.content.en, ...(rawProfile.content?.en || {}) },
+      th: { ...DEFAULT_PROFILE.content.th, ...(rawProfile.content?.th || {}) },
+    },
+  };
+  const slides =
+    profile.heroSlides && profile.heroSlides.length > 0
+      ? profile.heroSlides
+      : DEFAULT_SLIDES;
   const content = profile.content[lang];
   const ui = UI_TEXT[lang];
-  const currentSlideTitle = slides[currentSlideIndex]?.title || profile.brandName;
+  const currentSlideTitle =
+    slides[currentSlideIndex]?.title || profile.brandName;
   const visiblePhotos = photos.filter((p) => p.isVisible !== false);
 
   // Sync state with URL on popstate
@@ -1089,20 +1783,20 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
     const handlePopState = () => {
       setState(getInitialState());
     };
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
   }, []);
 
   // Handle direct URL access to projects (e.g. /works/huahin-2024/01)
   useEffect(() => {
     if (visiblePhotos.length === 0) return;
-    
-    const pathParts = window.location.pathname.split('/').filter(Boolean);
-    if (pathParts.length >= 2 && pathParts[0] === 'works') {
-      const projectSlug = pathParts[1]; 
-      const imageIndexStr = pathParts[2] || "01"; 
-      
-      const targetPhotos = visiblePhotos.filter(p => {
+
+    const pathParts = window.location.pathname.split("/").filter(Boolean);
+    if (pathParts.length >= 2 && pathParts[0] === "works") {
+      const projectSlug = pathParts[1];
+      const imageIndexStr = pathParts[2] || "01";
+
+      const targetPhotos = visiblePhotos.filter((p) => {
         const pSlug = slugify(`${p.project} ${p.year}`);
         const pSlugSimple = slugify(p.project);
         return pSlug === projectSlug || pSlugSimple === projectSlug;
@@ -1110,39 +1804,41 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
 
       if (targetPhotos.length > 0) {
         // Sort
-        targetPhotos.sort((a,b) => (a.order || 999) - (b.order || 999));
-        
+        targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
+
         // Find index
         const imageIndex = parseInt(imageIndexStr, 10) - 1; // 1-based to 0-based
-        const safeIndex = isNaN(imageIndex) ? 0 : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
-        
+        const safeIndex = isNaN(imageIndex)
+          ? 0
+          : Math.max(0, Math.min(imageIndex, targetPhotos.length - 1));
+
         setLightboxImages(targetPhotos);
         setInitialLightboxIndex(safeIndex);
         setLightboxOpen(true);
         // Ensure background is works
-        setState({ view: 'works', showAbout: false });
+        setState({ view: "works", showAbout: false });
       }
     }
   }, [visiblePhotos]);
 
   const navigate = (path, newView, newShowAbout) => {
-    window.history.pushState({}, '', path);
+    window.history.pushState({}, "", path);
     setState({ view: newView, showAbout: newShowAbout });
   };
 
   const handleNavClick = (target) => {
     setMobileMenuOpen(false);
     if (target === "home") {
-      navigate('/', 'home', false);
+      navigate("/", "home", false);
     } else if (target === "works") {
-      navigate('/works', 'works', false);
+      navigate("/works", "works", false);
     } else if (target === "about") {
-      navigate('/about', 'home', true);
+      navigate("/about", "home", true);
     }
   };
 
   const handleCloseAbout = () => {
-    navigate('/', 'home', false);
+    navigate("/", "home", false);
   };
 
   const handleLinkNavigation = (link) => {
@@ -1151,33 +1847,35 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
       const url = new URL(link, window.location.origin);
       if (url.origin === window.location.origin) {
         // It's internal
-        window.history.pushState({}, '', url.pathname);
-        
+        window.history.pushState({}, "", url.pathname);
+
         // Trigger manual update
-        const pathParts = url.pathname.split('/').filter(Boolean);
-        if (pathParts[0] === 'works') {
-           setState({ view: 'works', showAbout: false });
-           const projectSlug = pathParts[1];
-           if (projectSlug) {
-             const targetPhotos = visiblePhotos.filter(p => {
-                const pSlug = slugify(`${p.project} ${p.year}`);
-                const pSlugSimple = slugify(p.project);
-                return pSlug === projectSlug || pSlugSimple === projectSlug;
-             });
-             if (targetPhotos.length > 0) {
-                targetPhotos.sort((a,b) => (a.order || 999) - (b.order || 999));
-                const imageIndexStr = pathParts[2] || "01";
-                const idx = parseInt(imageIndexStr, 10) - 1;
-                const safeIndex = isNaN(idx) ? 0 : Math.max(0, Math.min(idx, targetPhotos.length - 1));
-                setLightboxImages(targetPhotos);
-                setInitialLightboxIndex(safeIndex);
-                setLightboxOpen(true);
-             }
-           }
-        } else if (pathParts[0] === 'about') {
-           setState({ view: 'home', showAbout: true });
+        const pathParts = url.pathname.split("/").filter(Boolean);
+        if (pathParts[0] === "works") {
+          setState({ view: "works", showAbout: false });
+          const projectSlug = pathParts[1];
+          if (projectSlug) {
+            const targetPhotos = visiblePhotos.filter((p) => {
+              const pSlug = slugify(`${p.project} ${p.year}`);
+              const pSlugSimple = slugify(p.project);
+              return pSlug === projectSlug || pSlugSimple === projectSlug;
+            });
+            if (targetPhotos.length > 0) {
+              targetPhotos.sort((a, b) => (a.order || 999) - (b.order || 999));
+              const imageIndexStr = pathParts[2] || "01";
+              const idx = parseInt(imageIndexStr, 10) - 1;
+              const safeIndex = isNaN(idx)
+                ? 0
+                : Math.max(0, Math.min(idx, targetPhotos.length - 1));
+              setLightboxImages(targetPhotos);
+              setInitialLightboxIndex(safeIndex);
+              setLightboxOpen(true);
+            }
+          }
+        } else if (pathParts[0] === "about") {
+          setState({ view: "home", showAbout: true });
         } else {
-           setState({ view: 'home', showAbout: false });
+          setState({ view: "home", showAbout: false });
         }
       } else {
         window.location.href = link;
@@ -1189,49 +1887,110 @@ const MainView = ({ photos, settings, onLoginClick, isOffline }) => {
 
   const handleImageClick = (item, projectPhotos) => {
     const index = projectPhotos.findIndex((p) => p.id === item.id);
-    if (index !== -1) { 
+    if (index !== -1) {
       setLightboxImages(projectPhotos);
-      setInitialLightboxIndex(index); 
+      setInitialLightboxIndex(index);
       setLightboxOpen(true);
+
+      // Update URL
       const slug = slugify(`${item.project} ${item.year}`);
-      window.history.pushState({}, '', `/works/${slug}/${(index + 1).toString().padStart(2, '0')}`);
+      const newPath = `/works/${slug}/${(index + 1)
+        .toString()
+        .padStart(2, "0")}`;
+      window.history.pushState({}, "", newPath);
     }
   };
 
   const handleLightboxIndexChange = (newIndex) => {
+    // Update URL without pushing history (replace)
     if (lightboxImages.length > 0) {
       const item = lightboxImages[newIndex];
       const slug = slugify(`${item.project} ${item.year}`);
-      window.history.replaceState({}, '', `/works/${slug}/${(newIndex + 1).toString().padStart(2, '0')}`);
+      const newPath = `/works/${slug}/${(newIndex + 1)
+        .toString()
+        .padStart(2, "0")}`;
+      window.history.replaceState({}, "", newPath);
     }
   };
 
   const handleLightboxClose = () => {
     setLightboxOpen(false);
-    window.history.pushState({}, '', '/works');
+    window.history.pushState({}, "", "/works");
   };
 
   return (
     <div className="bg-neutral-950 text-neutral-200 font-sans selection:bg-white selection:text-black relative">
       <MetaUpdater profile={settings.profile} />
       <div className="noise-bg"></div>
-      <button onClick={onLoginClick} className="fixed bottom-6 right-6 z-50 bg-neutral-900/50 hover:bg-white hover:text-black text-white/50 p-3 rounded-full transition-all duration-500 border border-white/10 hover:border-white shadow-lg backdrop-blur-md"><Settings className="w-4 h-4" /></button>
-      <GlobalNav profile={profile} ui={ui} onNavClick={handleNavClick} lang={lang} setLang={setLang} mobileMenuOpen={mobileMenuOpen} setMobileMenuOpen={setMobileMenuOpen} />
+      <button
+        onClick={onLoginClick}
+        className="fixed bottom-6 right-6 z-50 bg-neutral-900/50 hover:bg-white hover:text-black text-white/50 p-3 rounded-full transition-all duration-500 border border-white/10 hover:border-white shadow-lg backdrop-blur-md"
+      >
+        <Settings className="w-4 h-4" />
+      </button>
+      <GlobalNav
+        profile={profile}
+        ui={ui}
+        onNavClick={handleNavClick}
+        lang={lang}
+        setLang={setLang}
+        mobileMenuOpen={mobileMenuOpen}
+        setMobileMenuOpen={setMobileMenuOpen}
+      />
       {view === "home" && !showAbout && (
         <div className="relative h-screen w-screen overflow-hidden">
-          <HeroSlideshow slides={slides} onIndexChange={setCurrentSlideIndex} onLinkClick={handleLinkNavigation} />
+          <HeroSlideshow
+            slides={slides}
+            onIndexChange={setCurrentSlideIndex}
+            onLinkClick={handleLinkNavigation}
+          />
           <div className="absolute bottom-0 left-0 z-10 px-6 md:px-12 pb-16 md:pb-24 max-w-5xl w-full">
-            <h2 className="text-white/70 tracking-[0.4em] mb-6 uppercase text-[10px] font-bold animate-fade-in-up font-serif" style={{ animationDelay: "0.1s" }}>{content.title}</h2>
+            <h2
+              className="text-white/70 tracking-[0.4em] mb-6 uppercase text-[10px] font-bold animate-fade-in-up font-serif"
+              style={{ animationDelay: "0.1s" }}
+            >
+              {content.title}
+            </h2>
             <div className="overflow-hidden min-h-[3rem] md:min-h-[5rem]">
-              <h1 key={currentSlideTitle} className="text-3xl sm:text-4xl md:text-6xl font-thin mb-6 text-white tracking-wide leading-none opacity-95 animate-fade-in-up font-serif">{currentSlideTitle}</h1>
+              <h1
+                key={currentSlideTitle}
+                className="text-3xl sm:text-4xl md:text-6xl font-thin mb-6 text-white tracking-wide leading-none opacity-95 animate-fade-in-up font-serif"
+              >
+                {currentSlideTitle}
+              </h1>
             </div>
-            <p className="text-neutral-400 text-xs sm:text-sm font-light max-w-lg leading-relaxed border-l border-white/10 pl-4 opacity-80 animate-fade-in-up font-sans" style={{ animationDelay: "0.3s" }}>{content.bio}</p>
+            <p
+              className="text-neutral-400 text-xs sm:text-sm font-light max-w-lg leading-relaxed border-l border-white/10 pl-4 opacity-80 animate-fade-in-up font-sans"
+              style={{ animationDelay: "0.3s" }}
+            >
+              {content.bio}
+            </p>
           </div>
         </div>
       )}
-      {view === "works" && !showAbout && <WorksPage photos={visiblePhotos} profile={profile} ui={ui} onImageClick={handleImageClick} />}
-      {showAbout && <AboutPage profile={profile} lang={lang} onClose={() => navigate('/', 'home', false)} />}
-      {lightboxOpen && <ImmersiveLightbox initialIndex={initialLightboxIndex} images={lightboxImages} onClose={handleLightboxClose} onIndexChange={handleLightboxIndexChange} />}
+      {view === "works" && !showAbout && (
+        <WorksPage
+          photos={visiblePhotos}
+          profile={profile}
+          ui={ui}
+          onImageClick={handleImageClick}
+        />
+      )}
+      {showAbout && (
+        <AboutPage
+          profile={profile}
+          lang={lang}
+          onClose={() => navigate("/", "home", false)}
+        />
+      )}
+      {lightboxOpen && (
+        <ImmersiveLightbox
+          initialIndex={initialLightboxIndex}
+          images={lightboxImages}
+          onClose={handleLightboxClose}
+          onIndexChange={handleLightboxIndexChange}
+        />
+      )}
     </div>
   );
 };
@@ -1241,7 +2000,9 @@ class ErrorBoundaryWrapper extends Component {
     super(props);
     this.state = { hasError: false, error: null };
   }
-  static getDerivedStateFromError(error) { return { hasError: true, error }; }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
   render() {
     if (this.state.hasError) {
       return (
@@ -1249,7 +2010,12 @@ class ErrorBoundaryWrapper extends Component {
           <AlertCircle size={48} className="text-red-500 mb-4" />
           <h2 className="text-xl font-bold mb-2">Something went wrong</h2>
           <p className="text-neutral-500 mb-4">{this.state.error?.message}</p>
-          <button onClick={() => window.location.reload()} className="bg-white text-black px-4 py-2 rounded">Reload</button>
+          <button
+            onClick={() => window.location.reload()}
+            className="bg-white text-black px-4 py-2 rounded"
+          >
+            Reload
+          </button>
         </div>
       );
     }
@@ -1268,11 +2034,11 @@ const AppContent = () => {
 
   useEffect(() => {
     const timeout = setTimeout(() => {
-      setIsLoading(prev => {
+      setIsLoading((prev) => {
         if (prev) {
           console.warn("Loading timed out, switching to offline mode");
           setIsOffline(true);
-          setPhotos([]); 
+          setPhotos([]);
           return false;
         }
         return prev;
@@ -1280,77 +2046,135 @@ const AppContent = () => {
     }, 2500);
 
     const initAuth = async () => {
-      if (!isFirebaseInitialized) return;
-      try { 
-        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) { 
-          await signInWithCustomToken(auth, __initial_auth_token); 
-        } else { 
-          await signInAnonymously(auth); 
-        } 
-      } catch (e) { console.error("Auth Failed", e); }
+      if (!auth) return; // 修复：直接检查 auth 对象，不使用已删除的变量
+      try {
+        if (
+          typeof __initial_auth_token !== "undefined" &&
+          __initial_auth_token
+        ) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        } else {
+          await signInAnonymously(auth);
+        }
+      } catch (e) {
+        console.error("Auth Failed", e);
+      }
     };
     initAuth();
-    
-    const unsubAuth = isFirebaseInitialized ? onAuthStateChanged(auth, setUser) : () => {};
-    return () => { clearTimeout(timeout); unsubAuth(); };
+
+    const unsubAuth = auth ? onAuthStateChanged(auth, setUser) : () => {};
+    return () => {
+      clearTimeout(timeout);
+      unsubAuth();
+    };
   }, []);
 
   useEffect(() => {
-    if (!user || !isFirebaseInitialized) return;
-    
-    const unsubPhotos = onSnapshot(getPublicCollection("photos"), (snap) => {
-      const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
-      data.sort((a, b) => (a.order || 9999) - (b.order || 9999));
-      setPhotos(data);
-      setIsLoading(false);
-    }, (err) => { 
-      console.error("Data Load Error", err); 
-      setIsOffline(true); 
-      setIsLoading(false); 
-    });
-    
-    const unsubSettings = onSnapshot(getPublicDoc("settings", "global"), (snap) => { 
-      if (snap.exists()) setSettings({ ...DEFAULT_SETTINGS, ...snap.data() }); 
-    });
-    
-    return () => { unsubPhotos(); unsubSettings(); };
+    if (!user || !db) return;
+
+    const unsubPhotos = onSnapshot(
+      getPublicCollection("photos"),
+      (snap) => {
+        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+        data.sort((a, b) => (a.order || 9999) - (b.order || 9999));
+        setPhotos(data);
+        setIsLoading(false);
+      },
+      (err) => {
+        console.error("Data Load Error", err);
+        setIsOffline(true);
+        setIsLoading(false);
+      }
+    );
+
+    const unsubSettings = onSnapshot(
+      getPublicDoc("settings", "global"),
+      (snap) => {
+        if (snap.exists()) setSettings({ ...DEFAULT_SETTINGS, ...snap.data() });
+      }
+    );
+
+    return () => {
+      unsubPhotos();
+      unsubSettings();
+    };
   }, [user]);
 
-  const handleLoginAttempt = (pass) => { if (pass === APP_CONFIG.adminPasscode) { setShowLogin(false); setViewMode("admin"); } else { alert("Wrong Passcode"); } };
-  const handleAddPhoto = async (d) => await addDoc(getPublicCollection("photos"), { ...d, createdAt: serverTimestamp() });
-  const handleDeletePhoto = async (id) => await deleteDoc(getPublicDoc("photos", id));
-  const handleUpdateSettings = async (s) => await setDoc(getPublicDoc("settings", "global"), s, { merge: true });
-  
+  const handleLoginAttempt = (pass) => {
+    if (pass === APP_CONFIG.adminPasscode) {
+      setShowLogin(false);
+      setViewMode("admin");
+    } else {
+      alert("Wrong Passcode");
+    }
+  };
+  const handleAddPhoto = async (d) =>
+    await addDoc(getPublicCollection("photos"), {
+      ...d,
+      createdAt: serverTimestamp(),
+    });
+  const handleDeletePhoto = async (id) =>
+    await deleteDoc(getPublicDoc("photos", id));
+  const handleUpdateSettings = async (s) =>
+    await setDoc(getPublicDoc("settings", "global"), s, { merge: true });
+
   const handleBatchUpdate = async (updates) => {
     try {
-      const promises = updates.map(u => {
+      const promises = updates.map((u) => {
         const { id, ...data } = u;
         return updateDoc(getPublicDoc("photos", id), data);
       });
       await Promise.all(promises);
-    } catch(e) {
+    } catch (e) {
       console.error("Batch update failed:", e);
       alert("Update failed: " + e.message);
     }
   };
 
-  if (isLoading) return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center text-neutral-500">
-      <Loader2 className="w-8 h-8 animate-spin mb-4 text-white" />
-      <p className="tracking-[0.2em] text-xs uppercase font-bold font-serif mb-8">Loading T8DAY...</p>
-      <button 
-        onClick={() => { setIsOffline(true); setIsLoading(false); }}
-        className="px-4 py-2 border border-neutral-700 rounded text-xs uppercase hover:bg-neutral-800 transition-colors"
-      >
-        Launch Demo Mode
-      </button>
-    </div>
-  );
+  if (isLoading)
+    return (
+      <div className="min-h-screen bg-neutral-950 flex flex-col items-center justify-center text-neutral-500">
+        <Loader2 className="w-8 h-8 animate-spin mb-4 text-white" />
+        <p className="tracking-[0.2em] text-xs uppercase font-bold font-serif mb-8">
+          Loading T8DAY...
+        </p>
+        <button
+          onClick={() => {
+            setIsOffline(true);
+            setIsLoading(false);
+          }}
+          className="px-4 py-2 border border-neutral-700 rounded text-xs uppercase hover:bg-neutral-800 transition-colors"
+        >
+          Launch Demo Mode
+        </button>
+      </div>
+    );
 
   return (
     <>
-      {viewMode === "public" ? <MainView photos={photos} settings={settings} onLoginClick={() => setShowLogin(true)} isOffline={isOffline} /> : <AdminDashboard photos={photos} settings={settings} onLogout={() => setViewMode("public")} onAddPhoto={handleAddPhoto} onDeletePhoto={handleDeletePhoto} onUpdateSettings={handleUpdateSettings} onBatchUpdate={handleBatchUpdate} />}
-      <LoginModal isOpen={showLogin} onClose={() => setShowLogin(false)} onLogin={handleLoginAttempt} />
+      {viewMode === "public" ? (
+        <MainView
+          photos={photos}
+          settings={settings}
+          onLoginClick={() => setShowLogin(true)}
+          isOffline={isOffline}
+        />
+      ) : (
+        <AdminDashboard
+          photos={photos}
+          settings={settings}
+          onLogout={() => setViewMode("public")}
+          onAddPhoto={handleAddPhoto}
+          onDeletePhoto={handleDeletePhoto}
+          onUpdateSettings={handleUpdateSettings}
+          onBatchUpdate={handleBatchUpdate}
+        />
+      )}
+      <LoginModal
+        isOpen={showLogin}
+        onClose={() => setShowLogin(false)}
+        onLogin={handleLoginAttempt}
+      />
     </>
   );
 };
