@@ -626,7 +626,7 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
-// ImmersiveLightbox: 优化版 (固定半透明箭头 + 无转圈)
+// ImmersiveLightbox: 修复版 (移除模糊和放大效果，保持纯净)
 const ImmersiveLightbox = ({
   initialIndex,
   images,
@@ -741,11 +741,11 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-0 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {/* 1. Thumbnail (Placeholder) */}
+        {/* 1. Thumbnail (Placeholder) - 移除了模糊和放大效果 */}
         <img
           src={placeholderSrc}
-          className={`${imgClassName} object-contain absolute filter blur-xl scale-105`}
-          style={{ opacity: 1 }}
+          className={`${imgClassName} object-contain absolute transition-opacity duration-700 ease-out`}
+          style={{ opacity: isHighResLoaded ? 0 : 1 }} // 大图加载后隐藏缩略图
           alt="placeholder"
         />
 
