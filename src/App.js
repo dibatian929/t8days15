@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useRef, Component } from "react";
-// --- 1. 图标库安全引用 ---
 import {
   Camera,
   Instagram,
@@ -40,7 +39,7 @@ import {
   ArrowUp,
   ArrowDown,
   Maximize,
-  Aperture, // 确保引入
+  Aperture,
 } from "lucide-react";
 import { initializeApp } from "firebase/app";
 import {
@@ -210,8 +209,6 @@ const injectStyles = () => {
 };
 injectStyles();
 
-// --- 全局常量定义 (移至顶层以修复白屏) ---
-
 const APP_CONFIG = { adminPasscode: "8888" };
 
 const UI_TEXT = {
@@ -322,7 +319,7 @@ const GlobalNav = ({
   setMobileMenuOpen,
 }) => {
   const [langDropdownOpen, setLangDropdownOpen] = useState(false);
-  const uiText = ui || UI_TEXT.en; // Safe fallback
+  const uiText = ui || { works: "WORKS", about: "ABOUT", language: "LANGUAGE" };
 
   return (
     <>
@@ -629,7 +626,7 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
-// ImmersiveLightbox: 修复版 (固定半透明箭头 + 无转圈)
+// ImmersiveLightbox: 优化版 (固定半透明箭头 + 无转圈)
 const ImmersiveLightbox = ({
   initialIndex,
   images,
@@ -1501,26 +1498,35 @@ const PhotosManager = ({
     setLocalPhotos([...otherYearPhotos, ...thisYearPhotos]);
   };
 
+  // 重要修复：保存排序时使用当前的数组索引作为新的 order 值
   const handleSaveOrder = () => {
-    onBatchUpdate(localPhotos.map((p, i) => ({ id: p.id, order: p.order })));
+    // 使用 map 的 index (i) 重新分配 order，确保所见即所得
+    const updates = localPhotos.map((p, i) => ({
+      id: p.id,
+      order: i + 1, // 重新编号，从1开始
+    }));
+    onBatchUpdate(updates);
     alert("Order Saved");
   };
 
   const [dragged, setDragged] = useState(null);
   const onDragStart = (e, p) => setDragged(p);
-  const onDragOver = (e, target) => {
+  const onDragEnter = (e, target) => {
     e.preventDefault();
-    if (
-      !dragged ||
-      dragged.id === target.id ||
-      dragged.project !== target.project
-    )
+    if (!dragged || dragged.id === target.id) return;
+    if (dragged.project !== target.project || dragged.year !== target.year)
       return;
+
     const items = [...localPhotos];
     const f = items.findIndex((i) => i.id === dragged.id);
     const t = items.findIndex((i) => i.id === target.id);
-    items.splice(f, 1);
-    items.splice(t, 0, dragged);
+
+    if (f < 0 || t < 0) return;
+
+    // 移动元素位置
+    const item = items.splice(f, 1)[0];
+    items.splice(t, 0, item);
+
     setLocalPhotos(items);
   };
 
@@ -1614,33 +1620,34 @@ const PhotosManager = ({
                     </div>
                   </div>
                   <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
-                    {grouped[year][proj]
-                      .sort((a, b) => (a.order || 0) - (b.order || 0))
-                      .map((p) => (
-                        <div
-                          key={p.id}
-                          draggable
-                          onDragStart={(e) => onDragStart(e, p)}
-                          onDragOver={(e) => onDragOver(e, p)}
-                          className="aspect-square bg-black rounded relative group cursor-move"
-                        >
-                          <img
-                            src={p.thumbnailUrl || p.url}
-                            className="w-full h-full object-cover opacity-80"
-                          />
-                          <div className="absolute top-1 left-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 text-neutral-400 pointer-events-none">
-                            <Menu size={14} />
-                          </div>
-                          <button
-                            onClick={() => {
-                              if (confirm("Delete?")) onDeletePhoto(p.id);
-                            }}
-                            className="absolute top-0 right-0 bg-red-500 text-white p-1 opacity-0 group-hover:opacity-100 z-10"
-                          >
-                            <Trash size={10} />
-                          </button>
+                    {grouped[year][proj].map((p) => (
+                      <div
+                        key={p.id}
+                        draggable
+                        onDragStart={(e) => onDragStart(e, p)}
+                        onDragEnter={(e) => onDragEnter(e, p)}
+                        onDragOver={(e) => e.preventDefault()}
+                        className={`aspect-square bg-black rounded relative group cursor-move ${
+                          dragged?.id === p.id ? "opacity-50" : "opacity-100"
+                        }`}
+                      >
+                        <img
+                          src={p.thumbnailUrl || p.url}
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute top-1 left-1 flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity z-10 text-neutral-400 pointer-events-none">
+                          <Menu size={14} />
                         </div>
-                      ))}
+                        <button
+                          onClick={() => {
+                            if (confirm("Delete?")) onDeletePhoto(p.id);
+                          }}
+                          className="absolute top-0 right-0 bg-red-500 text-white p-1 opacity-0 group-hover:opacity-100 z-10"
+                        >
+                          <Trash size={10} />
+                        </button>
+                      </div>
+                    ))}
                     <div className="aspect-square border border-dashed border-neutral-700 flex items-center justify-center relative cursor-pointer hover:border-white">
                       <Plus className="text-neutral-500" />
                       <input
@@ -2046,7 +2053,7 @@ const AppContent = () => {
     }, 2500);
 
     const initAuth = async () => {
-      if (!auth) return; // 修复：直接检查 auth 对象，不使用已删除的变量
+      if (!auth) return;
       try {
         if (
           typeof __initial_auth_token !== "undefined" &&
@@ -2070,6 +2077,7 @@ const AppContent = () => {
   }, []);
 
   useEffect(() => {
+    // 彻底移除了 isFirebaseInitialized，修复白屏
     if (!user || !db) return;
 
     const unsubPhotos = onSnapshot(
