@@ -626,7 +626,7 @@ const AboutPage = ({ profile, lang, onClose }) => {
   );
 };
 
-// ImmersiveLightbox: 修复版 (移除模糊和放大效果，保持纯净)
+// ImmersiveLightbox: 修复版 (移除模糊放大滤镜，保持纯净)
 const ImmersiveLightbox = ({
   initialIndex,
   images,
@@ -741,11 +741,11 @@ const ImmersiveLightbox = ({
       />
 
       <div className="relative z-0 w-full h-full flex items-center justify-center p-4 pointer-events-none">
-        {/* 1. Thumbnail (Placeholder) - 移除了模糊和放大效果 */}
+        {/* 1. Thumbnail (Placeholder) - 移除了 blur 和 scale，保持纯净 */}
         <img
           src={placeholderSrc}
           className={`${imgClassName} object-contain absolute transition-opacity duration-700 ease-out`}
-          style={{ opacity: isHighResLoaded ? 0 : 1 }} // 大图加载后隐藏缩略图
+          style={{ opacity: isHighResLoaded ? 0 : 1 }}
           alt="placeholder"
         />
 
@@ -2077,7 +2077,7 @@ const AppContent = () => {
   }, []);
 
   useEffect(() => {
-    // 彻底移除了 isFirebaseInitialized，修复白屏
+    // 修复点：移除 isFirebaseInitialized，直接使用 user 和 db 判断
     if (!user || !db) return;
 
     const unsubPhotos = onSnapshot(
